@@ -1,0 +1,11 @@
+sample_ID,coord_file,image_file,mask_file,patient_ID,block,cohort
+BCM-002_A11_1,raw_data/cellPos/BCM-002_A11_1_1565850_cellPos.csv,raw_data/images/SET1-BCM-002_A11_1_1565850.jpg,raw_data/masks/BCM-002_A11_1_msk.png,BCM-002,A11,1
+BCM-002_A15_1,raw_data/cellPos/BCM-002_A15_1_1565851_cellPos.csv,raw_data/images/SET1-BCM-002_A15_1_1565851.jpg,raw_data/masks/BCM-002_A15_1_msk.png,BCM-002,A15,1
+DFCI-001_A15_1,raw_data/cellPos/DFCI-001_A15_1_1565519_cellPos.csv,raw_data/images/SET1-DFCI-001_A15_1_1565519.jpg,raw_data/masks/DFCI-001_A15_1_msk.png,DFCI-001,A15,1
+DFCI-001_A17_1,raw_data/cellPos/DFCI-001_A17_1_1565520_cellPos.csv,raw_data/images/SET1-DFCI-001_A17_1_1565520.jpg,raw_data/masks/DFCI-001_A17_1_msk.png,DFCI-001,A17,1
+DFCI-001_B3_1,raw_data/cellPos/DFCI-001_B3_1_1565521_cellPos.csv,raw_data/images/SET1-DFCI-001_B3_1_1565521.jpg,raw_data/masks/DFCI-001_B3_1_msk.png,DFCI-001,B3,1
+BCM-001_A10_2,raw_data/cellPos/BCM-001_A10_2_1565848_cellPos.csv,raw_data/images/SET1-BCM-001_A10_2_1565848.jpg,raw_data/masks/BCM-001_A10_2_msk.png,BCM-001,A10,2
+BCM-001_A15_2,raw_data/cellPos/BCM-001_A15_2_1565849_cellPos.csv,raw_data/images/SET1-BCM-001_A15_2_1565849.jpg,raw_data/masks/BCM-001_A15_2_msk.png,BCM-001,A15,2
+BCM-003_A13_2,raw_data/cellPos/BCM-003_A13_2_1565852_cellPos.csv,raw_data/images/SET1-BCM-003_A13_2_1565852.jpg,raw_data/masks/BCM-003_A13_2_msk.png,BCM-003,A13,2
+BCM-003_A19_2,raw_data/cellPos/BCM-003_A19_2_1565853_cellPos.csv,raw_data/images/SET1-BCM-003_A19_2_1565853.jpg,raw_data/masks/BCM-003_A19_2_msk.png,BCM-003,A19,2
+BCM-004_E33_2,raw_data/cellPos/BCM-004_E33_2_1565855_cellPos.csv,raw_data/images/SET1-BCM-004_E33_2_1565855.jpg,raw_data/masks/BCM-004_E33_2_msk.png,BCM-004,E33,2
