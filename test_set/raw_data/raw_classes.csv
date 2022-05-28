@@ -1,7 +1,0 @@
-class,class_name,class_val,class_color,drop
-f,Fibroblasts,42,#2b83ba,FALSE
-l,Lymphocytes,84,#1a9641,FALSE
-t,DCIS cells,126,#d7191c,FALSE
-e,Epithelial cells,168,#ff8400,TRUE
-i,Spurious cells,210,#ed00d5,TRUE
-o,Other cells,255,#bababa,TRUE
