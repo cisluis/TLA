@@ -46,7 +46,7 @@ def printProgressBar(iteration, total,
         print()
 
 
-def KDE(data, shape, bw, rbins=1, cbins=1):
+def KDE(data_in, shape, bw, rbins=1, cbins=1):
     """
     Evaluates a KDE using a convolution with a Fast Fourier Transform (FFT)
 
@@ -67,8 +67,24 @@ def KDE(data, shape, bw, rbins=1, cbins=1):
                        np.arange(-rbins, shape[0] + rbins, rbins))
     grid = np.stack([R.ravel(), C.ravel()]).T
 
+    # get data points are inside of the grid
+    data  = data_in.loc[(data_in['row'] > np.min(grid[:, 0])) &
+                        (data_in['row'] < np.max(grid[:, 0])) &
+                        (data_in['col'] > np.min(grid[:, 1])) &
+                        (data_in['col'] < np.max(grid[:, 1]))]
+    
+                           
     # Compute the kernel density estimate
     coords = np.array(data[['row', 'col']])
+    
+    # min_grid = np.min(grid, axis=0)
+    # max_grid = np.max(grid, axis=0)
+    # min_data = np.min(coords, axis=0)
+    # max_data = np.max(coords, axis=0)
+    # if not ((min_grid < min_data).all() and (max_grid > max_data).all()):
+    #     print([min_grid, max_grid, min_data, max_data])
+    #     raise ValueError("Every data point must be inside of the grid.")
+    
     points = FFTKDE(kernel='gaussian', bw=bw).fit(coords).evaluate(grid)
 
     # normalizes the output to cells per grid unit

@@ -13,6 +13,7 @@ Help()
    echo "#  options:                                                         #"
    echo "#   -h     print this help                                          #"
    echo "#   -v     print TLA modules versions                               #"
+   echo "#   -l     print license statement                                  #"
    echo "#                                                                   #"
    echo "#  arguments:                                                       #"
    echo "#   action: 'setup' for pre-processing data                         #"
@@ -49,13 +50,16 @@ Versions()
    echo
 }
 
-while getopts ":h:v" option; do
+while getopts ":h:v:l" option; do
    case $option in
       h) # display Help
          Help
          exit;;
       v) # display versions
          Versions
+         exit;;
+      l) # display license
+         less LICENSE
          exit;;
    esac
 done
@@ -109,15 +113,24 @@ case $ARG1 in
         exit;;
 	
    clean) # delete results
-          {
-             read    
-             while IFS=, read -r nam pth res
-             do
-                echo "... cleaning data for study <$nam>"
-                datadir=${pth}"data"
-                rm -rf $datadir
-             done
-          } < $ARG2
+          echo "Are you sure you wish to clean study cache?"
+          select yn in "Yes" "No"; do
+             case $yn in
+                Yes ) {
+                       read    
+                       while IFS=, read -r nam pth res
+                          do
+                          echo "... cleaning data for study <$nam>"
+                          datadir=${pth}"data"
+                          rm -rf $datadir
+                       done
+                      } < $ARG2; 
+                      exit;;
+                      
+                No ) echo "... nothing done"
+                     exit;;
+             esac
+          done
           exit;;
 	
    *) # unknown action

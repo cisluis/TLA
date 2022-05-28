@@ -128,7 +128,6 @@ class Study:
       # plots distributions of quadrat stats
       self.classes = quadFigs(self.allpops_out, self.classes,
                               os.path.join(self.dat_pth,
-                                           'results',
                                            self.name + '_quadrat_stats.png'))
       self.classes.to_csv(os.path.join(self.dat_pth, 
                                        self.name + '_classes.csv'), 
@@ -204,7 +203,8 @@ class Sample:
       self.raster_file = os.path.join(outpth, self.sid + '_raster.npz')
       
       # additional info
-      self.classes_file = os.path.join(self.res_pth, 'classes.csv')
+      self.classes_file = os.path.join(self.res_pth, 
+                                       self.sid +'_classes.csv')
       self.rcell = 0
       
      
@@ -212,7 +212,9 @@ class Sample:
       """
       Loads coordinates data, shift and convert values.
       Crops images to the corresponding convex hull
-     """
+      """
+     
+      from skimage.transform import resize
       
       if not os.path.exists(self.raw_cell_data_file):
           print("ERROR: data file " + self.raw_cell_data_file + \
@@ -243,9 +245,12 @@ class Sample:
       if ((imfile_exist and mkfile_exist) and
           ((ims.shape[0] != msc.shape[0]) or
            (ims.shape[1] != msc.shape[1]))):
-          print('\n =====> WARNING! sample_ID: ' + self.sid +
-                '; image and mask are NOT of the same size, ' +
-                'thus adopting mask field domain...')
+          #print('\n =====> WARNING! sample_ID: ' + self.sid +
+          #      '; image and mask are NOT of the same size, ' +
+          #      'thus adopting mask field domain...')
+          ims = np.rint(resize(ims, (msc.shape[0], msc.shape[1], 3),
+                               anti_aliasing=True, 
+                               preserve_range=True)).astype('uint8')
 
       # limits for image cropping
       rmin = np.max([0, ymin - edge])
@@ -673,7 +678,8 @@ class Sample:
        
       # Save a reference to the standard output
       original_stdout = sys.stdout
-      with open(os.path.join(self.res_pth, 'summary.txt'), 'w') as f:
+      with open(os.path.join(self.res_pth, 
+                             self.sid +'_summary.txt'), 'w') as f:
           sys.stdout = f  # Change the standard output to the file we created.
           print('(*) Sample: ' + self.sid)
           print('(*) Landscape size (r,c)[pix]: ' + str(self.imshape) +
@@ -932,6 +938,12 @@ def xyShift(data, shape, ref, scale):
     # scale coordinates to physical units and transforms vertical axis
     cell_data['x'] = round(cell_data['col']*scale, 4)
     cell_data['y'] = round((shape[0] - cell_data['row'])*scale, 4)
+    
+    # drops data points outside of frame
+    cell_data = cell_data.loc[(cell_data['row'] > 0) &
+                              (cell_data['row'] < shape[0]) &
+                              (cell_data['col'] > 0) &
+                              (cell_data['col'] < shape[1])]
 
     return(cell_data)
 

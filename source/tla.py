@@ -94,7 +94,7 @@ class Landscape:
       self.sid = sample.sample_ID
       self.res_pth = os.path.join(dat_pth, sample['results_dir'])
       
-      aux = os.path.join(self.res_pth, 'classes.csv')
+      aux = os.path.join(self.res_pth, self.sid +'_classes.csv')
       if not os.path.exists(aux):
           print("ERROR: classes file " + aux + " does not exist!")
           sys.exit()
@@ -365,7 +365,7 @@ class Landscape:
       
       # saves to png file
       fig.savefig(os.path.join(self.res_pth, 
-                               'coloc_landscape.png'),
+                               self.sid +'_coloc_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
@@ -377,7 +377,7 @@ class Landscape:
                               ttl, 
                               [0, 1])
       plt.savefig(os.path.join(self.res_pth,
-                               'coloc_correlations.png'),
+                               self.sid +'_coloc_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
       
@@ -409,7 +409,7 @@ class Landscape:
       
       # saves to png file
       fig.savefig(os.path.join(self.res_pth, 
-                               'nndist_landscape.png'),
+                               self.sid +'_nndist_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
@@ -422,7 +422,7 @@ class Landscape:
                               ttl, 
                               [vmin, vmax])
       plt.savefig(os.path.join(self.res_pth, 
-                               'nndist_correlations.png'),
+                               self.sid +'_nndist_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
       
@@ -454,7 +454,7 @@ class Landscape:
       
       # saves to png file
       fig.savefig(os.path.join(self.res_pth,
-                               'rhfscore_landscape.png'),
+                               self.sid +'_rhfscore_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
@@ -467,7 +467,7 @@ class Landscape:
                               ttl, 
                               [vmin, vmax])
       plt.savefig(os.path.join(self.res_pth,
-                               'rhfscore_correlations.png'),
+                               self.sid +'_rhfscore_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
       
@@ -498,7 +498,7 @@ class Landscape:
       
       # saves to png file
       fig.savefig(os.path.join(self.res_pth,
-                               'gozscore_landscape.png'),
+                               self.sid +'_gozscore_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
@@ -509,14 +509,14 @@ class Landscape:
                               comps, 
                               self.imshape,
                               'HOT score', 
-                              [-1.0, 1.0],
+                              [-1.1, 1.1],
                               self.scale, 
                               self.units, 
                               self.binsiz)
 
       # saves to png file
       fig.savefig(os.path.join(self.res_pth, 
-                               'hotscore_landscape.png'),
+                               self.sid +'_hotscore_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
   
@@ -550,7 +550,7 @@ class Landscape:
                                 ttl, 
                                 self.classes)
       fig.savefig(os.path.join(self.res_pth,
-                               'coloc-rhindex_correlations.png'),
+                               self.sid +'_coloc-rhindex_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
@@ -568,7 +568,7 @@ class Landscape:
                                 ttl,
                                 self.classes)
       fig.savefig(os.path.join(self.res_pth, 
-                               'coloc-nnindex_correlations.png'),
+                               self.sid +'_coloc-nnindex_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
@@ -586,7 +586,7 @@ class Landscape:
                                 ttl,
                                 self.classes)
       fig.savefig(os.path.join(self.res_pth, 
-                               'nnindex-rhindex_correlations.png'),
+                               self.sid +'_nnindex-rhindex_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
       
@@ -605,9 +605,9 @@ class Landscape:
       # get adjacency matrix (as related to LME classes)
       adj_pairs = lmeAdjacency(self.plsobj, self.classes)
       adj_pairs.to_csv(os.path.join(self.res_pth, 
-                                    'lme_adjacency_odds.tsv'),
-                       sep='\t', index=False)
-      lmeAdjacencyHeatmap(adj_pairs, self.res_pth)
+                                    self.sid +'_lme_adjacency_odds.csv'),
+                       sep=',', index=False)
+      lmeAdjacencyHeatmap(self.sid, adj_pairs, self.res_pth)
       
 
       # get all patch metrics and plot histograms
@@ -615,24 +615,25 @@ class Landscape:
       _ = plotPatchHists(self.sid, patch_metrics, self.res_pth)
       # saves patch metrics table
       patch_metrics.to_csv(os.path.join(self.res_pth, 
-                                        'lme_patch_metrics.tsv'),
-                           sep='\t', index=False)
+                                        self.sid +'_lme_patch_metrics.csv'),
+                           sep=',', index=False)
 
       # get all class metrics and plot histograms
       class_metrics = getClassMetrics(self.plsobj, self.classes)
       _ = plotClassHists(self.sid, class_metrics, self.res_pth)
       # saves class metrics table
       class_metrics.to_csv(os.path.join(self.res_pth, 
-                                        'lme_class_metrics.tsv'),
-                           sep='\t', index=False)
+                                        self.sid +'_lme_class_metrics.csv'),
+                           sep=',', index=False)
       
       # get all landscape-level metrics and plot histograms
       landscape_metrics = getLandscapeMetrics(self.plsobj)
       # _ = plotLandscapeHists(sid, landscape_metrics, res_pth)
       # saves landscape metrics table
       landscape_metrics.to_csv(os.path.join(self.res_pth, 
-                                            'lme_landscape_metrics.tsv'),
-                           sep='\t', index=True, index_label="metric")
+                                            self.sid + \
+                                                '_lme_landscape_metrics.csv'),
+                           sep=',', index=True, index_label="metric")
 
       # get sample stats
       return(getSampleStats(sample, self.plsobj, adj_pairs, 
@@ -736,7 +737,7 @@ def lmeRename(lmearr, dim):
             m = get_digit(lmeval, 2*j)
             if n == 0:
                 k = 0
-            elif (m == 0 or (n == 2 and m == 1)):
+            elif (m == 0 or (n == 1 and m == 1)):
                 k = 1
             else:
                 k = 2
@@ -1007,7 +1008,7 @@ def getSampleStats(sample, ls, adj_pairs, class_metrics, landscape_metrics):
 # %%%% Plotting functions
 
 
-def lmeAdjacencyHeatmap(adj_pairs, res_pth ):
+def lmeAdjacencyHeatmap(sid, adj_pairs, res_pth ):
     
     import seaborn as sns
     
@@ -1027,7 +1028,8 @@ def lmeAdjacencyHeatmap(adj_pairs, res_pth ):
           xlabel=None, ylabel=None);
     f.invert_yaxis()
     f.set_aspect('equal')
-    f.figure.savefig(os.path.join(res_pth, 'lme_adjacency_odds.png'),
+    f.figure.savefig(os.path.join(res_pth, 
+                                  sid +'_lme_adjacency_odds.png'),
                      bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -1108,7 +1110,7 @@ def plotLandscape(sid, raster, classes, shape, scale, units, binsiz, res_pth):
         ax.set_title('Local Micro-Environments (LME)', fontsize=18, y=1.02)
         fig.subplots_adjust(hspace=0.4)
         fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-        fig.savefig(os.path.join(res_pth, 'LME_landscape.png'),
+        fig.savefig(os.path.join(res_pth, sid +'_lme_landscape.png'),
                     bbox_inches='tight', dpi=300)
         plt.close()
 
@@ -1127,7 +1129,7 @@ def plotLandscape(sid, raster, classes, shape, scale, units, binsiz, res_pth):
         ax.set_xticks(icticks)
         ax.set_xticklabels(cticks, rotation=90)
         ax.set_yscale('log')
-        fig.savefig(os.path.join(res_pth, 'LME_distribution.png'),
+        fig.savefig(os.path.join(res_pth, sid +'_lme_distribution.png'),
                     bbox_inches='tight', dpi=300)
         plt.close()
 
@@ -1158,7 +1160,7 @@ def plotCaseLandscape(sid, raster, classes, comps, shape,
     nlevs = 10
     bini = (lims[1] - lims[0])/(2*nlevs)
     cticks = np.arange(lims[0], lims[1] + 2*bini, 2*bini)
-    bticks = np.arange(lims[0], lims[1] + bini, bini)
+    bticks = np.arange(lims[0]- bini, lims[1] + bini, bini)
     # vmax = 0
 
     [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
@@ -1190,8 +1192,8 @@ def plotCaseLandscape(sid, raster, classes, comps, shape,
                                    density=False)
             vals = freq/np.sum(~np.isnan(aux))
             # vmax = np.max(np.append(vmax, vals))
-            ax[i, 1].bar(bticks[:-1], vals,
-                         width=bini, align='edge',
+            ax[i, 1].bar(bticks, vals,
+                         width=bini, align='center',
                          alpha=0.75, color='b', edgecolor='k')
 
             ax[i, 1].set_title(classes.class_name[comp],
@@ -1380,7 +1382,7 @@ def plotPatchHists(sid, df, res_pth):
 
     fig.subplots_adjust(hspace=0.4)
     fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-    fig.savefig(os.path.join(res_pth, 'lme_patch_metrics_hists.png'),
+    fig.savefig(os.path.join(res_pth, sid +'_lme_patch_metrics_hists.png'),
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -1415,7 +1417,7 @@ def plotClassHists(sid, df, res_pth):
 
     fig.subplots_adjust(hspace=0.4)
     fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-    fig.savefig(os.path.join(res_pth, 'lme_class_metrics_hists.png'),
+    fig.savefig(os.path.join(res_pth, sid +'_lme_class_metrics_hists.png'),
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -1443,7 +1445,7 @@ def plotClassHists(sid, df, res_pth):
 
     fig2.subplots_adjust(hspace=0.4)
     fig2.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-    fig2.savefig(os.path.join(res_pth, 'lme_class_coverage.png'),
+    fig2.savefig(os.path.join(res_pth, sid +'_lme_class_coverage.png'),
                  bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -1604,8 +1606,8 @@ def main(args):
 
 
         # %% End Steps
-        progressBar(numsamples-1, numsamples, Nsteps, Nsteps, msg, 
-                    'saving summary tables...')
+        #progressBar(numsamples-1, numsamples, Nsteps, Nsteps, msg, 
+        #            'saving summary tables...')
         
         cols = ['sample_ID', 'total_area', 'ROI_area', 'num_cells',
                 'f_num_cells', 'l_num_cells', 't_num_cells']
@@ -1622,27 +1624,27 @@ def main(args):
         study.samples_out.to_csv(tblname, index=False)
         
         cols = ['num_cells', 'num_lmes', 'landscape_area', 
-                'adjacency_index', 'LME_contagion',
-               'LME_Shannon', 'LME_shape_index', 'LME_Simpson', 
-               'LME_num_patches',
-               'LME_patch_density', 'LME_total_edge', 'LME_edge_density',
-               'LME_largest_patch_index']
+                'adjacency_index', 'lme_contagion',
+                'lme_Shannon', 'lme_shape_index', 'lme_Simpson', 
+                'lme_num_patches',
+                'lme_patch_density', 'lme_total_edge', 'lme_edge_density',
+                'lme_largest_patch_index']
         
         labs = ['Number of Cells', 'Number of LMEs', 'Landscape Area', 
                 'LME Adjacency Index', 'LME Contagion',
-               'LME Shannon Index', 'LME Shape Index', 'LME Simpson Index', 
-               'LME Number of Patches', 'LME Patch Density', 
-               'LME Total Edge', 'LME Edge Density', 
-               'LME Largest Patch Index']
+                'LME Shannon Index', 'LME Shape Index', 'LME Simpson Index', 
+                'LME Number of Patches', 'LME Patch Density', 
+                'LME Total Edge', 'LME Edge Density', 
+                'LME Largest Patch Index']
         
         for i, c in enumerate(cols):
             
-            plotViolins(study.samples_out,
-                        'cohort', "Cohort",
-                        c, labs[i], 
-                        os.path.join(study.dat_pth, 
-                                     'results',
-                                     study.name + '_' + labs[i] + '.png'))
+            _= plotViolins(study.samples_out,
+                           'cohort', "Cohort",
+                           c, labs[i], 
+                           os.path.join(study.dat_pth, 
+                                        'results',
+                                        study.name + '_' + labs[i] + '.png'))
 
 
 
