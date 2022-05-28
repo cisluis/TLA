@@ -741,7 +741,8 @@ class Sample:
                 # loc='upper left', bbox_to_anchor=(1, 1),
                 markerscale=10, fontsize=16, facecolor='w', edgecolor='k')
 
-      plt.savefig(os.path.join(self.res_pth, 'landscape_points.png'),
+      plt.savefig(os.path.join(self.res_pth, 
+                               self.sid + '_landscape_points.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
@@ -757,7 +758,8 @@ class Sample:
           ax[i].set_title(row.class_name, fontsize=18, y=1.02)
       plt.suptitle('Sample ID: ' + str(self.sid), fontsize=24, y=1.001)
       plt.tight_layout()
-      plt.savefig(os.path.join(self.res_pth, 'landscape_classes.png'),
+      plt.savefig(os.path.join(self.res_pth, 
+                               self.sid + '_landscape_classes.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
@@ -825,7 +827,8 @@ class Sample:
 
           fig.subplots_adjust(hspace=0.4)
           fig.suptitle('Sample ID: ' + str(self.sid), fontsize=24, y=.95)
-          fig.savefig(os.path.join(self.res_pth, 'landscape.png'),
+          fig.savefig(os.path.join(self.res_pth, 
+                                   self.sid + '_landscape.png'),
                       bbox_inches='tight', dpi=300)
           plt.close()
 
@@ -891,7 +894,8 @@ class Sample:
 
           fig.subplots_adjust(hspace=0.4)
           fig.suptitle('Sample ID: ' + str(self.sid), fontsize=24, y=.95)
-          fig.savefig(os.path.join(self.res_pth, 'class_landscape.png'),
+          fig.savefig(os.path.join(self.res_pth, 
+                                   self.sid + '_class_landscape.png'),
                       bbox_inches='tight', dpi=300)
           plt.close()
 

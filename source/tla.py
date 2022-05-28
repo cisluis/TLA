@@ -503,16 +503,16 @@ class Landscape:
       plt.close()
 
       # plots array of landscapes for these comparisons
-      fig = plotCaseLandscape(self.sid, 
-                              self.hotarr, 
-                              self.classes, 
-                              comps, 
-                              self.imshape,
-                              'HOT score', 
-                              [-1.1, 1.1],
-                              self.scale, 
-                              self.units, 
-                              self.binsiz)
+      fig = plotDiscreteLandscape(self.sid, 
+                                  self.hotarr, 
+                                  self.classes, 
+                                  comps, 
+                                  self.imshape,
+                                  'HOT score', 
+                                  [-1, 1],
+                                  self.scale, 
+                                  self.units, 
+                                  self.binsiz)
 
       # saves to png file
       fig.savefig(os.path.join(self.res_pth, 
@@ -1160,7 +1160,7 @@ def plotCaseLandscape(sid, raster, classes, comps, shape,
     nlevs = 10
     bini = (lims[1] - lims[0])/(2*nlevs)
     cticks = np.arange(lims[0], lims[1] + 2*bini, 2*bini)
-    bticks = np.arange(lims[0]- bini, lims[1] + bini, bini)
+    bticks = np.arange(lims[0], lims[1] + bini, bini)
     # vmax = 0
 
     [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
@@ -1188,12 +1188,13 @@ def plotCaseLandscape(sid, raster, classes, comps, shape,
             ax[i, 0].set_title(classes.class_name[comp],
                                fontsize=18, y=1.02)
 
-            freq, _ = np.histogram(aux[~np.isnan(aux)], bins=bticks,
+            freq, _ = np.histogram(aux[~np.isnan(aux)], 
+                                   bins=bticks,
                                    density=False)
             vals = freq/np.sum(~np.isnan(aux))
             # vmax = np.max(np.append(vmax, vals))
-            ax[i, 1].bar(bticks, vals,
-                         width=bini, align='center',
+            ax[i, 1].bar(bticks[:-1], vals,
+                         width=bini, align='edge',
                          alpha=0.75, color='b', edgecolor='k')
 
             ax[i, 1].set_title(classes.class_name[comp],
@@ -1213,6 +1214,83 @@ def plotCaseLandscape(sid, raster, classes, comps, shape,
 
     return(fig)
 
+
+def plotDiscreteLandscape(sid, raster, classes, comps, shape,
+                          metric, lims, scale, units, binsiz):
+    """
+    Plot of discrete landscape from comparison raster
+
+    Parameters
+    ----------
+    - sid: sample ID
+    - raster: (numpy) raster image
+    - classes: (pandas) dataframe with cell classes
+    - comps: (list) class comparisons
+    - shape: (tuple) shape in pixels of TLA landscape
+    - metric: (str) title of metric ploted
+    - lims: (tuple) limits of the metric
+    - scale: (float) scale of physical units / pixel
+    - units: (str) name of physical units (eg '[um]')
+    - binsiz : (float) size of quadrats
+
+    """
+
+    dim = len(comps)
+    cticks  = np.unique(raster[~np.isnan(raster)])
+
+    [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
+    
+    def countsin(x, bins):
+        return([len(x[x==b]) for b in bins])
+    
+    cmap = plt.get_cmap('jet', len(cticks))
+
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+
+        # plots sample image
+        fig, ax = plt.subplots(dim, 2,
+                               figsize=(12*2, 0.5 + math.ceil(12*dim/ar)),
+                               facecolor='w', edgecolor='k')
+
+        for i, comp in enumerate(comps):
+
+            aux = raster[:, :, comp]
+            
+            im = plotRGB(ax[i, 0], aux, units,
+                         cedges, redges, xedges, yedges, fontsiz=18,
+                         vmin=lims[0], vmax=lims[1], cmap=cmap)
+
+            cbar = plt.colorbar(im, ax=ax[i, 0], fraction=0.046, pad=0.04)
+            cbar.set_ticks(cticks)
+            cbar.set_label(metric, rotation=90, labelpad=2)
+            ax[i, 0].set_title(classes.class_name[comp],
+                               fontsize=18, y=1.02)
+
+            freq = countsin(aux[~np.isnan(aux)], cticks)
+            vals = freq/np.sum(~np.isnan(aux))
+            # vmax = np.max(np.append(vmax, vals))
+            ax[i, 1].bar(cticks, vals,
+                         align='center',
+                         alpha=0.75, color='b', edgecolor='k')
+
+            ax[i, 1].set_title(classes.class_name[comp],
+                               fontsize=18, y=1.02)
+            ax[i, 1].set_xlabel(metric)
+            ax[i, 1].set_ylabel('Fraction of pixels')
+            #ax[i, 1].set_xlim(lims)
+            ax[i, 1].set_xticks(cticks)
+            # ax[i, 1].set_yscale('log')
+
+        # for i in np.arange(len(comps)):
+        #    ax[i, 1].set_ylim([0, 1.05*vmax])
+
+        fig.subplots_adjust(hspace=0.4)
+        fig.suptitle(metric + '\nSample ID: ' + str(sid),
+                     fontsize=24, y=.95)
+
+    return(fig)
 
 def plotCompLandscape(sid, raster, classes, comps, shape,
                       metric, lims, scale, units, binsiz):
@@ -1606,8 +1684,8 @@ def main(args):
 
 
         # %% End Steps
-        #progressBar(numsamples-1, numsamples, Nsteps, Nsteps, msg, 
-        #            'saving summary tables...')
+        progressBar(index, numsamples, Nsteps, Nsteps, msg, 
+                   'saving summary tables...')
         
         cols = ['sample_ID', 'total_area', 'ROI_area', 'num_cells',
                 'f_num_cells', 'l_num_cells', 't_num_cells']
