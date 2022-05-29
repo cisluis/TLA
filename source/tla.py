@@ -556,7 +556,6 @@ class Landscape:
 
       # plot correlations between coloc and NNindex comparisons
       ttl = 'Coloc - NNdist Correlations\nSample ID: ' + str(self.sid)
-
       fig = factor_correlations(self.colocarr, 
                                 comps1, 
                                 'coloc', 
@@ -574,7 +573,6 @@ class Landscape:
 
       # plot correlations between NNindex and RHindex comparisons
       ttl = 'RHindex - NNdist Correlations\nSample ID: ' + str(self.sid)
-
       fig = factor_correlations(self.rhfuncarr, 
                                 comps2, 
                                 'RHindex', 
@@ -962,7 +960,7 @@ def getSampleStats(sample, ls, adj_pairs, class_metrics, landscape_metrics):
     #    (i.e., every cell is a patch of a different class) and interspersed 
     #    (i.e., equal proportions of all pairwise adjacencies)
     # => Approaches '100' when the whole landscape consists of a single patch.
-    sample_out['LME_contagion'] = landscape_metrics['contagion']
+    sample_out['lme_contagion'] = landscape_metrics['contagion']
     
     landscape_metrics['contagion']
 
@@ -972,7 +970,7 @@ def getSampleStats(sample, ls, adj_pairs, class_metrics, landscape_metrics):
     # => Approaches 0 when the entire landscape consists of a single patch.
     # => Increases as the number of classes increases and/or the proportional
     #    distribution of area among classes becomes more equitable.
-    sample_out['LME_Shannon'] = landscape_metrics['shannon_diversity_index']
+    sample_out['lme_Shannon'] = landscape_metrics['shannon_diversity_index']
 
     # Landscape Shape Index: measure of class aggregation that provides a 
     # standardized measure of edginess that adjusts for the size of the 
@@ -981,7 +979,7 @@ def getSampleStats(sample, ls, adj_pairs, class_metrics, landscape_metrics):
     #    corresponding class,
     # => Increases without limit as the patches become more disaggregated and 
     #    uniformly mixed.
-    sample_out['LME_shape_index'] = landscape_metrics['landscape_shape_index']
+    sample_out['lme_shape_index'] = landscape_metrics['landscape_shape_index']
     
     # Simpson Diversity Index (1 - Dominance): measure of diversity that 
     # reflects the dominance of species, taking into account the relative 
@@ -992,14 +990,14 @@ def getSampleStats(sample, ls, adj_pairs, class_metrics, landscape_metrics):
     #    patch of the corresponding class)
     ni = np.array(class_metrics.total_area)
     N  = np.sum(ni)
-    sample_out['LME_Simpson'] = np.sum(ni*(ni-1))/(N*(N-1))
+    sample_out['lme_Simpson'] = np.sum(ni*(ni-1))/(N*(N-1))
 
     # Other metrics
-    sample_out['LME_num_patches'] = landscape_metrics['number_of_patches']
-    sample_out['LME_patch_density'] = landscape_metrics['patch_density']
-    sample_out['LME_total_edge'] = landscape_metrics['total_edge']
-    sample_out['LME_edge_density'] = landscape_metrics['edge_density']
-    sample_out['LME_largest_patch_index'] = \
+    sample_out['lme_num_patches'] = landscape_metrics['number_of_patches']
+    sample_out['lme_patch_density'] = landscape_metrics['patch_density']
+    sample_out['lme_total_edge'] = landscape_metrics['total_edge']
+    sample_out['lme_edge_density'] = landscape_metrics['edge_density']
+    sample_out['lme_largest_patch_index'] = \
         landscape_metrics['largest_patch_index']
 
     return(sample_out)
@@ -1562,7 +1560,7 @@ def plotViolins(tbl, grps, glab, signal, slab, fname):
                             line_offset_to_box=0.2,
                             #text_format='full',
                             text_format='star',
-                            loc='inside', verbose=2);    
+                            loc='inside', verbose=1);    
     ax.set_xlabel(glab)
     ax.set_ylabel(slab)
     sns.set(font_scale = 2)
