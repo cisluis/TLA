@@ -335,13 +335,85 @@ class Landscape:
       self.lmearr = lmearr
       
       
-  def plotLMELandscape(self):
+  def plotLMELandscape(self, out_pth):
+      """
+      Plot LME landscape
+
+      """
+            
+      from matplotlib.cm import get_cmap
+      import warnings
+
+      dim = len(self.classes)
+      nlevs = 3**dim
+      lme = ''
+      raster = self.lmearr
       
-      _ = plotLandscape(self.sid, self.lmearr, self.classes, self.imshape, 
-                        self.scale, self.units, self.binsiz, self.res_pth)
+      for i in np.arange(dim):
+          
+          lme = lme + self.classes['class'][i]
+
+          icticks = np.arange(nlevs)
+          cticks = [lmeCode(x, dim) for x in np.arange(1, nlevs+1)]
+          ctitle = 'LME Categories (' + lme + ')'
+          cmap = get_cmap('jet', nlevs)
+
+          [ar, 
+           redges, cedges, 
+           xedges, yedges] = plotEdges(self.imshape, self.binsiz, self.scale)
+
+          with warnings.catch_warnings():
+              
+              warnings.simplefilter('ignore')
+
+              # plots sample image
+              fig, ax = plt.subplots(1, 1, 
+                                     figsize=(12*1, 0.5 + math.ceil(12*1/ar)),
+                                     facecolor='w', edgecolor='k')
+              
+              im = plotRGB(ax, raster, self.units,
+                           cedges, redges, xedges, yedges, fontsiz=18,
+                           vmin=-0.5, vmax=(nlevs - 0.5), cmap=cmap)
+              cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+              cbar.set_ticks(icticks)
+              cbar.set_ticklabels(cticks)
+              cbar.ax.tick_params(labelsize=14)
+              cbar.set_label(ctitle, size = 16, rotation=90, labelpad=1)
+              ax.set_title('Local Micro-Environments (LME)', 
+                           fontsize=16, y=1.02)
+              #fig.subplots_adjust(hspace=0.4)
+              fig.suptitle('Sample ID: ' + str(self.sid), 
+                           fontsize=18, y=.95)
+              plt.tight_layout()
+              fig.savefig(os.path.join(out_pth, 
+                                       self.sid +'_lme_landscape.png'),
+                          bbox_inches='tight', dpi=300)
+              plt.close()
+
+              # the histogram of LME frequencies
+              fig, ax = plt.subplots(1, 1, figsize=(12, 12),
+                                     facecolor='w', edgecolor='k')
+              ilabels, counts = np.unique(raster[~np.isnan(raster)],
+                                          return_counts=True)
+              ax.bar(ilabels, counts, align='center',
+                     # alpha=0.5,
+                     color=cmap(ilabels.astype(int)), edgecolor='k',)
+              ax.set_title('Local Micro-Environments (LME)', 
+                           fontsize=16, y=1.02)
+              ax.set_xlabel(ctitle)
+              ax.set_ylabel('Frequency')
+              ax.set_xlim([-0.5, (nlevs - 0.5)])
+              ax.set_xticks(icticks)
+              ax.set_xticklabels(cticks, rotation=90)
+              ax.set_yscale('log')
+              plt.tight_layout()
+              fig.savefig(os.path.join(out_pth, 
+                                       self.sid +'_lme_distribution.png'),
+                          bbox_inches='tight', dpi=300)
+              plt.close()
       
       
-  def plotColocLandscape(self):
+  def plotColocLandscape(self, out_pth):
       """
       Plots colocalization index landscape from raster
 
@@ -364,7 +436,7 @@ class Landscape:
                               self.binsiz)
       
       # saves to png file
-      fig.savefig(os.path.join(self.res_pth, 
+      fig.savefig(os.path.join(out_pth, 
                                self.sid +'_coloc_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
@@ -376,13 +448,13 @@ class Landscape:
                               self.classes, 
                               ttl, 
                               [0, 1])
-      plt.savefig(os.path.join(self.res_pth,
+      plt.savefig(os.path.join(out_pth,
                                self.sid +'_coloc_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
       
       
-  def plotNNDistLandscape(self):
+  def plotNNDistLandscape(self, out_pth):
       """
       Plots nearest neighbor distance index landscape from raster
 
@@ -408,7 +480,7 @@ class Landscape:
                               self.binsiz)
       
       # saves to png file
-      fig.savefig(os.path.join(self.res_pth, 
+      fig.savefig(os.path.join(out_pth, 
                                self.sid +'_nndist_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
@@ -421,13 +493,13 @@ class Landscape:
                               self.classes, 
                               ttl, 
                               [vmin, vmax])
-      plt.savefig(os.path.join(self.res_pth, 
+      plt.savefig(os.path.join(out_pth, 
                                self.sid +'_nndist_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
       
 
-  def plotRHFuncLandscape(self):
+  def plotRHFuncLandscape(self, out_pth):
       """
       Plots Ripley`s H function score landscape from raster
 
@@ -453,7 +525,7 @@ class Landscape:
                               self.binsiz)
       
       # saves to png file
-      fig.savefig(os.path.join(self.res_pth,
+      fig.savefig(os.path.join(out_pth,
                                self.sid +'_rhfscore_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
@@ -466,13 +538,13 @@ class Landscape:
                               self.classes, 
                               ttl, 
                               [vmin, vmax])
-      plt.savefig(os.path.join(self.res_pth,
+      plt.savefig(os.path.join(out_pth,
                                self.sid +'_rhfscore_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
       
       
-  def plotGOrdLandscape(self):
+  def plotGOrdLandscape(self, out_pth):
       """
       Plots Getis-Ord Z score landscape from raster
 
@@ -497,7 +569,7 @@ class Landscape:
                               self.binsiz)
       
       # saves to png file
-      fig.savefig(os.path.join(self.res_pth,
+      fig.savefig(os.path.join(out_pth,
                                self.sid +'_gozscore_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
@@ -515,13 +587,13 @@ class Landscape:
                                   self.binsiz)
 
       # saves to png file
-      fig.savefig(os.path.join(self.res_pth, 
+      fig.savefig(os.path.join(out_pth, 
                                self.sid +'_hotscore_landscape.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
   
 
-  def plotFactorCorrelations(self):
+  def plotFactorCorrelations(self, out_pth):
 
       from itertools import combinations, product, permutations
 
@@ -549,7 +621,7 @@ class Landscape:
                                 [wmin, wmax],
                                 ttl, 
                                 self.classes)
-      fig.savefig(os.path.join(self.res_pth,
+      fig.savefig(os.path.join(out_pth,
                                self.sid +'_coloc-rhindex_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
@@ -566,7 +638,7 @@ class Landscape:
                                 [vmin, vmax],
                                 ttl,
                                 self.classes)
-      fig.savefig(os.path.join(self.res_pth, 
+      fig.savefig(os.path.join(out_pth, 
                                self.sid +'_coloc-nnindex_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
@@ -583,13 +655,13 @@ class Landscape:
                                 [vmin, vmax],
                                 ttl,
                                 self.classes)
-      fig.savefig(os.path.join(self.res_pth, 
+      fig.savefig(os.path.join(out_pth, 
                                self.sid +'_nnindex-rhindex_correlations.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
       
 
-  def landscapeAnalysis(self, sample):
+  def landscapeAnalysis(self, sample, lme_pth):
       
       # sets background to 0 and create a pls object
       aux = self.lmearr.copy()
@@ -602,25 +674,25 @@ class Landscape:
 
       # get adjacency matrix (as related to LME classes)
       adj_pairs = lmeAdjacency(self.plsobj, self.classes)
-      adj_pairs.to_csv(os.path.join(self.res_pth, 
+      adj_pairs.to_csv(os.path.join(lme_pth, 
                                     self.sid +'_lme_adjacency_odds.csv'),
                        sep=',', index=False)
-      lmeAdjacencyHeatmap(self.sid, adj_pairs, self.res_pth)
+      lmeAdjacencyHeatmap(self.sid, adj_pairs, lme_pth)
       
 
       # get all patch metrics and plot histograms
       patch_metrics = getPatchMetrics(self.plsobj, self.classes)
-      _ = plotPatchHists(self.sid, patch_metrics, self.res_pth)
+      _ = plotPatchHists(self.sid, patch_metrics, lme_pth)
       # saves patch metrics table
-      patch_metrics.to_csv(os.path.join(self.res_pth, 
+      patch_metrics.to_csv(os.path.join(lme_pth, 
                                         self.sid +'_lme_patch_metrics.csv'),
                            sep=',', index=False)
 
       # get all class metrics and plot histograms
       class_metrics = getClassMetrics(self.plsobj, self.classes)
-      _ = plotClassHists(self.sid, class_metrics, self.res_pth)
+      _ = plotClassHists(self.sid, class_metrics, lme_pth)
       # saves class metrics table
-      class_metrics.to_csv(os.path.join(self.res_pth, 
+      class_metrics.to_csv(os.path.join(lme_pth, 
                                         self.sid +'_lme_class_metrics.csv'),
                            sep=',', index=False)
       
@@ -628,7 +700,7 @@ class Landscape:
       landscape_metrics = getLandscapeMetrics(self.plsobj)
       # _ = plotLandscapeHists(sid, landscape_metrics, res_pth)
       # saves landscape metrics table
-      landscape_metrics.to_csv(os.path.join(self.res_pth, 
+      landscape_metrics.to_csv(os.path.join(lme_pth, 
                                             self.sid + \
                                                 '_lme_landscape_metrics.csv'),
                            sep=',', index=True, index_label="metric")
@@ -1029,6 +1101,7 @@ def lmeAdjacencyHeatmap(sid, adj_pairs, res_pth ):
     f.figure.savefig(os.path.join(res_pth, 
                                   sid +'_lme_adjacency_odds.png'),
                      bbox_inches='tight', dpi=300)
+    plt.tight_layout()
     plt.close()
 
     return(0)
@@ -1057,81 +1130,6 @@ def plotEdges(shape, binsiz, scale):
     yedges = [np.around(b*scale, 2) for b in redges]
 
     return([ar, redges, cedges, xedges, yedges])
-
-
-def plotLandscape(sid, raster, classes, shape, scale, units, binsiz, res_pth):
-    """
-    Plot of landscape from raster
-
-    Parameters
-    ----------
-    - sid: sample ID
-    - raster: (numpy) LME raster image
-    - classes: (pandas) dataframe with cell classes
-    - shape: (tuple) shape in pixels of TLA landscape
-    - scale: (float) scale of physical units / pixel
-    - units: (str) name of physical units (eg '[um]')
-    - binsiz : (float) size of quadrats
-    - res_pth: (str) results path
-
-    """
-
-    from matplotlib.cm import get_cmap
-
-    dim = len(classes)
-    nlevs = 3**dim
-    lme = ''
-    for i in np.arange(dim):
-        lme = lme + classes['class'][i]
-
-    icticks = np.arange(nlevs)
-    cticks = [lmeCode(x, dim) for x in np.arange(1, nlevs+1)]
-    ctitle = 'LME Categories (' + lme + ')'
-    cmap = get_cmap('jet', nlevs)
-
-    [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
-
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-
-        # plots sample image
-        fig, ax = plt.subplots(1, 1, figsize=(12*1, 0.5 + math.ceil(12*1/ar)),
-                               facecolor='w', edgecolor='k')
-        im = plotRGB(ax, raster, units,
-                     cedges, redges, xedges, yedges, fontsiz=18,
-                     vmin=-0.5, vmax=(nlevs - 0.5), cmap=cmap)
-        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_ticks(icticks)
-        cbar.set_ticklabels(cticks)
-        cbar.set_label(ctitle, rotation=90, labelpad=1)
-        ax.set_title('Local Micro-Environments (LME)', fontsize=18, y=1.02)
-        fig.subplots_adjust(hspace=0.4)
-        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-        fig.savefig(os.path.join(res_pth, sid +'_lme_landscape.png'),
-                    bbox_inches='tight', dpi=300)
-        plt.close()
-
-        # the histogram of LME frequencies
-        fig, ax = plt.subplots(1, 1, figsize=(12, 12),
-                               facecolor='w', edgecolor='k')
-        ilabels, counts = np.unique(raster[~np.isnan(raster)],
-                                    return_counts=True)
-        ax.bar(ilabels, counts, align='center',
-               # alpha=0.5,
-               color=cmap(ilabels.astype(int)), edgecolor='k',)
-        ax.set_title('Local Micro-Environments (LME)', fontsize=18, y=1.02)
-        ax.set_xlabel(ctitle)
-        ax.set_ylabel('Frequency')
-        ax.set_xlim([-0.5, (nlevs - 0.5)])
-        ax.set_xticks(icticks)
-        ax.set_xticklabels(cticks, rotation=90)
-        ax.set_yscale('log')
-        fig.savefig(os.path.join(res_pth, sid +'_lme_distribution.png'),
-                    bbox_inches='tight', dpi=300)
-        plt.close()
-
-    return(0)
 
 
 def plotCaseLandscape(sid, raster, classes, comps, shape,
@@ -1206,9 +1204,10 @@ def plotCaseLandscape(sid, raster, classes, comps, shape,
         # for i in np.arange(len(comps)):
         #    ax[i, 1].set_ylim([0, 1.05*vmax])
 
-        fig.subplots_adjust(hspace=0.4)
-        fig.suptitle(metric + '\nSample ID: ' + str(sid),
+        #fig.subplots_adjust(hspace=0.4)
+        fig.suptitle('Sample ID: ' + str(sid),
                      fontsize=24, y=.95)
+        plt.tight_layout()
 
     return(fig)
 
@@ -1284,9 +1283,11 @@ def plotDiscreteLandscape(sid, raster, classes, comps, shape,
         # for i in np.arange(len(comps)):
         #    ax[i, 1].set_ylim([0, 1.05*vmax])
 
-        fig.subplots_adjust(hspace=0.4)
-        fig.suptitle(metric + '\nSample ID: ' + str(sid),
+        #fig.subplots_adjust(hspace=0.85)
+        fig.suptitle('Sample ID: ' + str(sid),
                      fontsize=24, y=.95)
+        plt.tight_layout()
+        
 
     return(fig)
 
@@ -1365,9 +1366,11 @@ def plotCompLandscape(sid, raster, classes, comps, shape,
         # for i in np.arange(len(comps)):
         #    ax[i, 1].set_ylim([0, 1.05*vmax])
 
-        fig.subplots_adjust(hspace=0.4)
-        fig.suptitle(metric + '\nSample ID: ' + str(sid),
+        #fig.subplots_adjust(hspace=0.85)
+        fig.suptitle('Sample ID: ' + str(sid),
                      fontsize=24, y=.95)
+        plt.tight_layout()
+        
 
     return(fig)
 
@@ -1460,6 +1463,7 @@ def plotPatchHists(sid, df, res_pth):
     fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
     fig.savefig(os.path.join(res_pth, sid +'_lme_patch_metrics_hists.png'),
                 bbox_inches='tight', dpi=300)
+    plt.tight_layout()
     plt.close()
 
     return(fig)
@@ -1495,6 +1499,7 @@ def plotClassHists(sid, df, res_pth):
     fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
     fig.savefig(os.path.join(res_pth, sid +'_lme_class_metrics_hists.png'),
                 bbox_inches='tight', dpi=300)
+    plt.tight_layout()
     plt.close()
 
     # get class coverage graphs
@@ -1523,6 +1528,7 @@ def plotClassHists(sid, df, res_pth):
     fig2.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
     fig2.savefig(os.path.join(res_pth, sid +'_lme_class_coverage.png'),
                  bbox_inches='tight', dpi=300)
+    plt.tight_layout()
     plt.close()
 
     return([fig, fig2])
@@ -1560,11 +1566,12 @@ def plotViolins(tbl, grps, glab, signal, slab, fname):
                             line_offset_to_box=0.2,
                             #text_format='full',
                             text_format='star',
-                            loc='inside', verbose=1);    
+                            loc='inside', verbose=0);    
     ax.set_xlabel(glab)
     ax.set_ylabel(slab)
     sns.set(font_scale = 2)
     fig.savefig(fname, bbox_inches='tight', dpi=300)
+    plt.tight_layout()
     plt.close()
          
     return(0)
@@ -1594,6 +1601,7 @@ def main(args):
     if not os.path.exists(argsfile):
         print("ERROR: The specified argument file does not exist!")
         sys.exit()
+
     args_tbl = pd.read_csv(argsfile)
 
     # Loops over all studies in the study set
@@ -1613,10 +1621,13 @@ def main(args):
               "; [{0}/{1}]".format(k + 1, len(args_tbl)))
 
         # number of processing steps
-        Nsteps = 6
+        Nsteps = 7
         printProgressBar(Nsteps*(0), Nsteps*(numsamples), suffix='')
 
-    
+        print(st)
+        sys.exit()        
+
+
         # %% loops over samples in this study
         for index, sample in study.samples.iterrows():
             
@@ -1648,41 +1659,50 @@ def main(args):
                             'computing space statistics...')
                 land.getSpaceStats()
                 
-                # STEP 4: pylandstats analysis
-                # Regular metrics can be computed at the patch, class and
-                # landscape level. For list of all implemented metrics see: 
-                # https://pylandstats.readthedocs.io/en/latest/landscape.html
-                progressBar(index, numsamples, 4, Nsteps, msg, 
-                            'running pylandstat analysis on LME patches...')
-                sample_out = land.landscapeAnalysis(sample)
-                
                 # pickle results of quadrats analysis (for faster re-runs)
                 with open(landpkl, 'wb') as f:  
-                    pickle.dump([land, sample_out], f)  
+                    pickle.dump([land], f)  
             
             else:
-                # STEP 5: loads pickled landscape data
-                progressBar(index, numsamples, 5, Nsteps, msg, 
+                # STEP 4: loads pickled landscape data
+                progressBar(index, numsamples, 4, Nsteps, msg, 
                             'loading landscape data...')
                 with open(landpkl, 'rb') as f:  
-                    [land, sample_out] = pickle.load(f) 
+                    [land] = pickle.load(f) 
                     
+            # STEP 5: pylandstats analysis
+            # Regular metrics can be computed at the patch, class and
+            # landscape level. For list of all implemented metrics see: 
+            # https://pylandstats.readthedocs.io/en/latest/landscape.html
+            progressBar(index, numsamples, 5, Nsteps, msg, 
+                        'running pylandstat analysis on LME patches...')
+            
+            lme_pth = os.path.join(land.res_pth, 'LME_Analysis')
+            if not os.path.exists(lme_pth):
+                os.makedirs(lme_pth)
+            sample_out = land.landscapeAnalysis(sample, lme_pth)
+            
+            land.plotLMELandscape(lme_pth)
+            
             # update sample table
             study.addToSamplesOut(sample_out)
                 
-            # %% STEP 6: prints LMEs and kernel stats
+            # STEP 6: prints LMEs and kernel stats
             progressBar(index, numsamples, 6, Nsteps, msg, 
                         'printing LMEs and factor index maps...')
-            land.plotLMELandscape()
-            land.plotColocLandscape()
-            land.plotNNDistLandscape()
-            land.plotRHFuncLandscape()
-            land.plotGOrdLandscape()
-            land.plotFactorCorrelations()
-
+            
+            fact_pth = os.path.join(land.res_pth, 'Space_Factors')
+            if not os.path.exists(fact_pth):
+                os.makedirs(fact_pth)
+                
+            land.plotColocLandscape(fact_pth)
+            land.plotNNDistLandscape(fact_pth)
+            land.plotRHFuncLandscape(fact_pth)
+            land.plotGOrdLandscape(fact_pth)
+            land.plotFactorCorrelations(fact_pth)
 
         # %% End Steps
-        progressBar(index, numsamples, Nsteps, Nsteps, msg, 
+        progressBar(index, numsamples, 7, Nsteps, msg, 
                    'saving summary tables...')
         
         cols = ['sample_ID', 'total_area', 'ROI_area', 'num_cells',
@@ -1720,7 +1740,7 @@ def main(args):
                            c, labs[i], 
                            os.path.join(study.dat_pth, 
                                         'results',
-                                        study.name + '_' + labs[i] + '.png'))
+                                        study.name + '_' + cols[i] + '.png'))
 
 
 

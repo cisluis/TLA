@@ -355,8 +355,11 @@ def sshPlotStratification(sshtab, data, factlab, strlabs):
     return([fig, ax])
 
 
-def sshSubs(sid, raster, imshape, binsiz, field_name, comps, classes, 
-            lmes, blobs, strata, out_pth, subset = True, para = False):
+def sshSubs(sid, raster, 
+            imshape, scale, units, binsiz, 
+            field_name, comps, classes, 
+            lmes, blobs, strata, 
+            out_pth, subset = True, para = False):
     """
     """
     from joblib import Parallel, delayed
@@ -389,8 +392,17 @@ def sshSubs(sid, raster, imshape, binsiz, field_name, comps, classes,
         data = pd.DataFrame({fact: Y[inx]})
         if 'LME' in strata:
             data['LME'] = L[inx].astype(np.int16)
+            plotFactorLandscape(sid, lmes, raster,
+                                fact_name + ' in LMEs', fact_name,
+                                imshape, scale, units, binsiz, 
+                                fact + '_lmes', out_pth)
+            
         if 'Blob' in strata:
             data['Blob'] = B[inx].astype(np.int16)
+            plotFactorLandscape(sid, blobs, raster,
+                                fact_name + ' in Blobs', fact_name,
+                                imshape, scale, units, binsiz, 
+                                fact + '_blobs', out_pth)
         
         # do SSH analysis on coloc factors
         [aux, auy, auz] = SSH(data, classes, 
@@ -420,24 +432,30 @@ def sshSubs(sid, raster, imshape, binsiz, field_name, comps, classes,
             ssheco = pd.concat([ssheco, auz], ignore_index=True)
         
     sshtab.to_csv(os.path.join(out_pth,
-                               'SSH_factor_' + field_name + '.csv'), 
+                               sid + '_ssh_factor_' + field_name + '.csv'), 
                   index=False)
     if (len(strata) > 1):
         sshint.to_csv(os.path.join(out_pth, 
-                                   'SSH_interaction_' + field_name + '.csv'), 
+                                   sid + '_ssh_interaction_' + \
+                                       field_name + '.csv'), 
                       index=False)
         ssheco.to_csv(os.path.join(out_pth,
-                                   'SSH_ecological_' + field_name + '.csv'), 
+                                   sid + '_ssh_ecological_' + \
+                                       field_name + '.csv'), 
                       index=False)
 
     return(0)
 
 
-def sshComps(sid, raster, imshape, binsiz, field_name, comps, classes, 
-             lmes, blobs, strata, out_pth, subset = True, para = False):
+def sshComps(sid, raster, 
+             imshape, scale, units, binsiz, 
+             field_name, comps, classes, 
+             lmes, blobs, strata, 
+             out_pth, subset = True, para = False):
     """
     """
     from joblib import Parallel, delayed
+    
     
     sshtab = pd.DataFrame()
     sshint = pd.DataFrame()
@@ -468,19 +486,30 @@ def sshComps(sid, raster, imshape, binsiz, field_name, comps, classes,
             classes['class'][ia] + '_' +  classes['class'][ib]
         fact_name = field_name + '(' + \
             classes['class_name'][ia] + ':' + classes['class_name'][ib] + ')'
+        
             
         data = pd.DataFrame({fact: Y[inx]})
         if 'LME' in strata:
             data['LME'] = L[inx].astype(np.int16)
+            plotFactorLandscape(sid, lmes, raster,
+                                fact_name + ' in LMEs', fact_name,
+                                imshape, scale, units, binsiz, 
+                                fact + '_lmes', out_pth)
+                    
         if 'Blob' in strata:
             data['Blob'] = B[inx].astype(np.int16)
-        
+            plotFactorLandscape(sid, blobs, raster,
+                                fact_name + ' in Blobs', fact_name,
+                                imshape, scale, units, binsiz, 
+                                fact + '_blobs', out_pth)
+           
         # do SSH analysis on coloc factors
         [aux, auy, auz] = SSH(data, classes, 
                               fact, fact_name, 
                               strata, strata, out_pth)
         return([aux, auy, auz])
         
+    
     if (para):
         
         #### NOT WORKING... Need to find a different way to do it
@@ -497,20 +526,25 @@ def sshComps(sid, raster, imshape, binsiz, field_name, comps, classes,
     else:
         # serial processing
         for i, comp in enumerate(comps):
+                       
             [aux, auy, auz] = func(comp)
             sshtab = pd.concat([sshtab, aux], ignore_index=True)
             sshint = pd.concat([sshint, auy], ignore_index=True)
             ssheco = pd.concat([ssheco, auz], ignore_index=True)
+            
+            
     
     sshtab.to_csv(os.path.join(out_pth, 
-                               'SSH_factor_' + field_name + '.csv'), 
+                               sid + '_ssh_factor_' + field_name + '.csv'), 
                   index=False)
     if (len(strata) > 1):
         sshint.to_csv(os.path.join(out_pth,
-                                   'SSH_interaction_' + field_name + '.csv'), 
+                                   sid + '_ssh_interaction_' + \
+                                       field_name + '.csv'), 
                       index=False)
         ssheco.to_csv(os.path.join(out_pth,
-                                   'SSH_ecological_' + field_name + '.csv'), 
+                                   sid + '_ssh_ecological_' + \
+                                       field_name + '.csv'), 
                       index=False)
 
     return(0)  
@@ -545,15 +579,20 @@ def plotEdges(shape, binsiz, scale):
     return([ar, redges, cedges, xedges, yedges])
 
 
-def plotLandscape(sid, raster, classes, shape, scale, units, binsiz, res_pth):
+
+def plotFactorLandscape(sid, patcharr, factarr, ttl, ftitle,
+                        shape, scale, units, binsiz, 
+                        nam, res_pth):
     """
     Plot of landscape from raster
 
     Parameters
     ----------
     - sid: sample ID
-    - raster: (numpy) LME raster image
-    - classes: (pandas) dataframe with cell classes
+    - patcharr: (numpy) LME or bloob raster image
+    - factarr: (numpy) factor raster image
+    - ttl: (str) title of plot
+    - ftitle: (str) factor name
     - shape: (tuple) shape in pixels of TLA landscape
     - scale: (float) scale of physical units / pixel
     - units: (str) name of physical units (eg '[um]')
@@ -561,21 +600,18 @@ def plotLandscape(sid, raster, classes, shape, scale, units, binsiz, res_pth):
     - res_pth: (str) results path
 
     """
-
-    from matplotlib.cm import get_cmap
-
-    dim = len(classes)
-    nlevs = 3**dim
-    lme = ''
-    for i in np.arange(dim):
-        lme = lme + classes['class'][i]
-
-    icticks = np.arange(nlevs)
-    cticks = [lmeCode(x, dim) for x in np.arange(1, nlevs+1)]
-    ctitle = 'LME Categories (' + lme + ')'
-    cmap = get_cmap('jet', nlevs)
-
+    
+    # get mean value of factor per patch
+    raster = np.empty(shape)
+    raster[:] = np.NaN
+    for b in np.unique(patcharr[patcharr>0]):
+        raster[patcharr == b] = np.mean(factarr[patcharr == b])
+        
+        
     [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
+    
+    vmin = np.nanmin(raster)
+    vmax = np.nanmax(raster)
 
     import warnings
     with warnings.catch_warnings():
@@ -586,34 +622,13 @@ def plotLandscape(sid, raster, classes, shape, scale, units, binsiz, res_pth):
                                facecolor='w', edgecolor='k')
         im = plotRGB(ax, raster, units,
                      cedges, redges, xedges, yedges, fontsiz=18,
-                     vmin=-0.5, vmax=(nlevs - 0.5), cmap=cmap)
+                     vmin=vmin, vmax=vmax, cmap='jet')
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_ticks(icticks)
-        cbar.set_ticklabels(cticks)
-        cbar.set_label(ctitle, rotation=90, labelpad=1)
-        ax.set_title('Local Micro-Environments (LME)', fontsize=18, y=1.02)
+        cbar.set_label(ftitle, rotation=90, labelpad=1)
+        ax.set_title(ttl, fontsize=18, y=1.02)
         fig.subplots_adjust(hspace=0.4)
         fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-        fig.savefig(os.path.join(res_pth, 'LME_landscape.png'),
-                    bbox_inches='tight', dpi=300)
-        plt.close()
-
-        # the histogram of LME frequencies
-        fig, ax = plt.subplots(1, 1, figsize=(12, 12),
-                               facecolor='w', edgecolor='k')
-        ilabels, counts = np.unique(raster[~np.isnan(raster)],
-                                    return_counts=True)
-        ax.bar(ilabels, counts, align='center',
-               # alpha=0.5,
-               color=cmap(ilabels.astype(int)), edgecolor='k',)
-        ax.set_title('Local Micro-Environments (LME)', fontsize=18, y=1.02)
-        ax.set_xlabel(ctitle)
-        ax.set_ylabel('Frequency')
-        ax.set_xlim([-0.5, (nlevs - 0.5)])
-        ax.set_xticks(icticks)
-        ax.set_xticklabels(cticks, rotation=90)
-        ax.set_yscale('log')
-        fig.savefig(os.path.join(res_pth, 'LME_distribution.png'),
+        fig.savefig(os.path.join(res_pth, sid + '_' + nam + '_landscape.png'),
                     bbox_inches='tight', dpi=300)
         plt.close()
 
@@ -872,7 +887,7 @@ def main(args):
                 comps = [list(c) for c in 
                          list(combinations(land.classes.index, 2))]
                 _ = sshComps(land.sid, land.colocarr, 
-                             land.imshape, land.binsiz,
+                             land.imshape, land.scale, land.units, land.binsiz,
                              'coloc', comps, land.classes, 
                              lmes, blobs, strata, out_pth, subset = True)
            
@@ -883,7 +898,7 @@ def main(args):
                 comps = [list(c) for c in 
                          list(permutations(land.classes.index, r=2))]
                 _ = sshComps(land.sid, land.nndistarr, 
-                             land.imshape, land.binsiz,
+                             land.imshape, land.scale, land.units, land.binsiz,
                              'nndist', comps, land.classes, 
                              lmes, blobs, strata, out_pth, subset = True)
            
@@ -894,7 +909,7 @@ def main(args):
                 comps = [list(c) for c in 
                          list(product(land.classes.index, repeat=2))]
                 _ = sshComps(land.sid, land.rhfuncarr, 
-                             land.imshape, land.binsiz,
+                             land.imshape, land.scale, land.units, land.binsiz,
                              'rhfunc', comps, land.classes, 
                              lmes, blobs, strata, out_pth, subset = True)
                          
@@ -904,11 +919,11 @@ def main(args):
             if 'geordZ' in factors:
                 comps = list(land.classes.index)
                 _ = sshSubs(land.sid, land.geordGarr, 
-                            land.imshape, land.binsiz,
+                            land.imshape, land.scale, land.units, land.binsiz,
                             'geordZ', comps, land.classes, 
                             lmes, blobs, strata, out_pth, subset = True)
                 _ = sshSubs(land.sid, land.hotarr, 
-                            land.imshape, land.binsiz,
+                            land.imshape, land.scale, land.units, land.binsiz,
                             'HOT', comps, land.classes, 
                             lmes, blobs, strata, out_pth, subset = True)
 
@@ -918,7 +933,7 @@ def main(args):
             if 'abundance' in factors:
                 comps = list(land.classes.index)
                 _ = sshSubs(land.sid, land.abuarr, 
-                            land.imshape, land.binsiz,
+                            land.imshape, land.scale, land.units, land.binsiz,
                             'abundance', comps, land.classes, 
                             lmes, blobs, strata, out_pth, subset = True)
 

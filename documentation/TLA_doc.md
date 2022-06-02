@@ -57,6 +57,10 @@ The six basic implemented distribution metrics, calculated across patches (and d
 6.	__Coefficient of variation__, (or variance) specified by the suffix `_cv` to the method name,  e.g. `area_cv`
 
 
+
+
+
+
 ## References:
 
 1. Mcgarigal, K., Cushman, S., & Ene, E. (2012). FRAGSTATS v4: Spatial Pattern Analysis Program for Categorical and Continuous Maps. Retrieved from http://www.umass.edu/landeco/research/fragstats/fragstats.html
@@ -247,12 +251,18 @@ __NOTE__: similar as before, most results are cached for faster re-running if yo
 
 ### TLA outputs
 
-All results are dumped in the `data/results/` folder:
+All results are dumped in the `data/results/` folder. Some details are:
 
-
-
-
-
+1. `_landscape.png` shows different views of the landscape
+2. `_classes.csv` and `_summary.txt` show some basic class-level statistics and sample-level statistics
+3. `_class_landscape.png` shows the abundance and mixing profile for each class
+4. `_lme...` files correspond to different plots and tables for LME properties, including [__patch, class and landscape__](## Introduction) level statistics. In particular the adjacency odds table shows the odds of each LME category to be in contact with any other category (normalized by the total number of neighbors of all pixels in that category).
+5. `_coloc...` files show properties of the __Colocalization index__
+6. `_nndist...` files show properties of the __Nearest Neighbor Distance metric__
+7. `_rhfscore...` files show properties of the __Ripley's H Function score__
+8. `_gozscore...` files show properties of the __Getis Ord Z score__
+9. `_hotscore...` files shoe properties of the __HOT score__
+10. Plots of correlations between all factors are also produced.
 
 
 ## Stratification Module `TLA ssh`

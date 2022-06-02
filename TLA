@@ -113,7 +113,7 @@ case $ARG1 in
         exit;;
 	
    clean) # delete results
-          echo "Are you sure you wish to clean study cache?"
+          echo "Are you sure you wish to clean cache for studies in <$ARG2>?"
           select yn in "Yes" "No"; do
              case $yn in
                 Yes ) {

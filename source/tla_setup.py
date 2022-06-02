@@ -895,7 +895,7 @@ class Sample:
           fig.subplots_adjust(hspace=0.4)
           fig.suptitle('Sample ID: ' + str(self.sid), fontsize=24, y=.95)
           fig.savefig(os.path.join(self.res_pth, 
-                                   self.sid + '_class_landscape.png'),
+                                   self.sid + '_abu_mix_landscape.png'),
                       bbox_inches='tight', dpi=300)
           plt.close()
 
