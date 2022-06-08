@@ -156,6 +156,52 @@ Along with a spatial factor for the z-scores, TLA generate a HOT factor consisti
 These spatial profiles characterize hotspots in relation to the __whole study area__ (sample landscape), indicating regions of abundance or depletion for each cell type. Overlaps for different classes can be generated to detects mutual hot/cold spotting in different combinations. 
 
 
+### Spatial Stratified Heterogeneity detection
+
+Spatial heterogeneity refers to non-uniform distribution of spatial factors within an area. Environments can have a variety of habitats, such as different topographies and ecological diversities capable of accommodating more or less interacting species: when organisms can finely partition a landscape into distinct suitable habitats (or niches), more species can coexist with minimal competition.
+
+Spatial stratified heterogeneity refers to a situation in which landscape strata, such as ecological zones or classes, present distinct profiles for spatial factors such that within strata variance is less than the between strata variance. This indicates that the stratification is somewhat predictive or well correlated to the intensity profile of the spatial factor.
+
+Please refer to documentation for the R package [geodetector](https://cran.r-project.org/web/packages/geodetector/vignettes/geodetector.html) for more details, definitions and examples.
+
+#### 1. SSH Factor detector
+
+The factor detector q-statistic measures the Spatial Stratified Heterogeneity (SSH) of a spatial factor _Y_ in relation to a categorical variable _X_ (strata). This is also known as the determinant power of a covariate _X_ of _Y_. Outputs include the following statistics:
+
+* __q-statistic__: The q-statistic measures the degree of SSH: 
+	- __q~1__ indicates a strong stratification: small within-strata
+variance and/or large between-strata variance. Thus a strong association between the explanatory variable and the explained variable (ie. strata categories explain the data)
+	- __q~0__ no stratification: within-strata variance is large and/or between-strata variance is small. Thus there is no relationship between the strata categories and the data.
+* __F-statistic__: F-value, assuming a random non-central F-distribution
+* __p-value__: Prob that the q-value is observed by random chance. The null hypothesis is defined as absence of within-stratum heterogeneity (__q~0__):
+	- __H<sub>0</sub>__: there is no SSH (stratification is not significant), thus within and between strata heterogeneity are similar.
+	- __H<sub>1</sub>__: there is SSH (stratification is significant), thus within-strata heterogeneity is significantly smaller than between-strata heterogeneity.
+
+#### 2. SSH Interaction detector
+
+The interaction detector function reveals whether risk variables
+_{X<sub>1</sub>, X<sub>2</sub>}_ have an interactive influence on a factor _Y_. Outputs a table for the interactive q-statistics between variables, accounted by measuring the effect of merging _X<sub>1</sub>_ and _X<sub>2</sub>_ together in a new category defined by their union, giving the possible outcomes:
+
+* __"equivalent"__ if q(X1∩X2) = q(X1) = q(X2)
+* __"weaken"__ if q(X1∩X2) < q(X1) + q(X2)
+* __"weaken, nonlinear"__ if q(X1∩X2) < q(X1) and q(X2)   
+* __"max(q(X1),q(x2)) weaken (uni-)"__ if q(X1∩X2) < max(q(X1),q(x2))
+* __"max(q(X1),q(x2)) weaken; min(q(X1),q(x2)) enhance"__ if min(q(X1),q(x2)) < q(X1∩X2) < max(q(X1),q(x2))
+* __"min(q(X1),q(x2)) enhance (uni-)"__ if min(q(X1),q(x2)) < q(X1∩X2) 
+* __"independent"__ if q(X1∩X2) = q(X1) + q(X2)
+* __"enhance, nonlinear"__ if q(X1∩X2) > q(X1) + q(X2)
+* __"enhance, bi-"__ if q(X1∩X2) > q(X1) and q(X2)
+   
+#### 3. SSH Risk detector
+
+This function calculates the average values in each stratum of the explanatory variable _X_, and reports if a significant difference between any two strata levels exists, indicating that the factor is a risk factor for the stratification structure. It outputs means of explained variable in each stratum and the t-test for differences every pair of strata (with the corresponding multiple comparison correction for p-values)
+
+#### 4. SSH Ecological detector
+
+This function identifies the impact of differences between two risk factors _X<sub>1</sub>_ and _X<sub>2</sub>_  returning the significance test of impact difference between them.
+
+The probability value is calculated from the positive tail of the cumulative F-statistic given by the ratio of the two factors individual F-statistics. The significance of this measure indicates that the two stratifications _X<sub>1</sub>_ and _X<sub>2</sub>_ are statistically distinct in terms of risk.
+
 ## References:
 
 1. Mcgarigal, K., Cushman, S., & Ene, E. (2012). FRAGSTATS v4: Spatial Pattern Analysis Program for Categorical and Continuous Maps. Retrieved from http://www.umass.edu/landeco/research/fragstats/fragstats.html
@@ -171,7 +217,14 @@ These spatial profiles characterize hotspots in relation to the __whole study ar
 6. Dixon, Philip M. (2002). "Ripley's K function". In El-Shaarawi, Abdel H.; Piegorsch, Walter W. (eds.). Encyclopedia of Environmetrics. John Wiley & Sons. pp. 1796–1803. ISBN 978-0-471-89997-6.
 5. Getis, Arthur, and J. K. Ord. "The Analysis of Spatial Association by Use of Distance Statistics." Geographical Analysis 24, no. 3. 1992.
 6. Mitchell, Andy. The ESRI Guide to GIS Analysis, Volume 2. ESRI Press, 2005.
-
+7. Wang JF, Li XH, Christakos G, Liao YL, Zhang T, Gu X, Zheng XY.
+Geographical detectors-based health risk assessment and its application in the neural tube defects study of the Heshun Region, China. International Journal of Geographical. Information Science, 2010, 24(1): 107-127.
+7. Wang JF, Zhang TL, Fu BJ. 2016. A measure of spatial stratified heterogeneity. Ecological Indicators 67: 250-256.
+8. Wang JF, Xu CD. Geodetector:Principle and prospective. Geographica
+Sinica, 2017, 72(1):116-134.
+8. Jiang B. 2015. Geospatial analysis requires a different way of thinking: The problem of spatial heterogeneity. GeoJournal 80(1), 1-13.
+9. Song, Y and Wu, P (2021). “An interactive detector for spatial associations”. International Journal of
+Geographical Information Science. doi:10.1080/13658816.2021.1882680
 ---
 ---
 ---
