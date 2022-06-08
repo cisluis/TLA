@@ -118,10 +118,11 @@ case $ARG1 in
              case $yn in
                 Yes ) {
                        read    
-                       while IFS=, read -r nam pth res
+                       while IFS=, read -r nam rph sam cls pth res
                           do
                           echo "... cleaning data for study <$nam>"
-                          datadir=${pth}"data"
+                          datadir=${pth}
+                          echo $datadir
                           rm -rf $datadir
                        done
                       } < $ARG2; 

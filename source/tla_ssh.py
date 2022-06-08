@@ -41,7 +41,7 @@ class Study:
       
       # loads arguments for this study
       self.name = study['name']
-      self.dat_pth = os.path.join(main_pth, study['path'], 'data')
+      self.dat_pth = os.path.join(main_pth, study['data_path'])
       if not os.path.exists(self.dat_pth):
           print("ERROR: data folder " + self.dat_pth + " does not exist!")
           print("... Please run << TLA setup >> for this study!")
@@ -610,27 +610,29 @@ def plotFactorLandscape(sid, patcharr, factarr, ttl, ftitle,
         
     [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
     
-    vmin = np.nanmin(raster)
-    vmax = np.nanmax(raster)
-
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-
-        # plots sample image
-        fig, ax = plt.subplots(1, 1, figsize=(12*1, 0.5 + math.ceil(12*1/ar)),
-                               facecolor='w', edgecolor='k')
-        im = plotRGB(ax, raster, units,
-                     cedges, redges, xedges, yedges, fontsiz=18,
-                     vmin=vmin, vmax=vmax, cmap='jet')
-        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label(ftitle, rotation=90, labelpad=1)
-        ax.set_title(ttl, fontsize=18, y=1.02)
-        fig.subplots_adjust(hspace=0.4)
-        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-        fig.savefig(os.path.join(res_pth, sid + '_' + nam + '_landscape.png'),
-                    bbox_inches='tight', dpi=300)
-        plt.close()
+    if len(raster[~np.isnan(raster)]) > 0:
+        
+        vmin = np.nanmin(raster)
+        vmax = np.nanmax(raster)
+    
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+    
+            # plots sample image
+            fig, ax = plt.subplots(1, 1, figsize=(12*1, 0.5 + math.ceil(12*1/ar)),
+                                   facecolor='w', edgecolor='k')
+            im = plotRGB(ax, raster, units,
+                         cedges, redges, xedges, yedges, fontsiz=18,
+                         vmin=vmin, vmax=vmax, cmap='jet')
+            cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label(ftitle, rotation=90, labelpad=1)
+            ax.set_title(ttl, fontsize=18, y=1.02)
+            fig.subplots_adjust(hspace=0.4)
+            fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+            fig.savefig(os.path.join(res_pth, sid + '_' + nam + '_landscape.png'),
+                        bbox_inches='tight', dpi=300)
+            plt.close()
 
     return(0)
 
@@ -859,7 +861,7 @@ def main(args):
             
             landpkl = os.path.join(study.dat_pth,
                                    sample['results_dir'],
-                                   sid +'.pkl')
+                                   sid +'_landscape.pkl')
             
             # %% STEP 1: loads pickled landscape data
             if (os.path.exists(landpkl)):
@@ -867,7 +869,7 @@ def main(args):
                 progressBar(index, numsamples, 1, Nsteps, msg, 
                             'loading landscape data...')
                 with open(landpkl, 'rb') as f:  
-                    [land, _] = pickle.load(f) 
+                    [land] = pickle.load(f) 
             else:
                 print("==> ERROR! pickle image does not exist: " + landpkl +
                       "; Make sure you ran TLA for this sample...")

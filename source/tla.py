@@ -44,7 +44,7 @@ class Study:
       
       # loads arguments for this study
       self.name = study['name']
-      self.dat_pth = os.path.join(main_pth, study['path'], 'data')
+      self.dat_pth = os.path.join(main_pth, study['data_path'])
       if not os.path.exists(self.dat_pth):
           print("ERROR: data folder " + self.dat_pth + " does not exist!")
           print("... Please run << TLA setup >> for this study!")
@@ -61,6 +61,7 @@ class Study:
           print("ERROR: samples file " + aux + " does not exist!")
           sys.exit()
       self.samples = pd.read_csv(aux)
+      self.samples.fillna('', inplace=True)
      
       # the size of quadrats and subquadrats
       self.binsiz = int((study['binsiz']))
@@ -79,7 +80,7 @@ class Study:
   def addToSamplesOut(self, sample_out):
       
       aux = pd.concat([self.samples_out,
-                       sample_out.to_frame().T],
+                       sample_out],
                       ignore_index=True)
       
       self.samples_out = aux
@@ -1072,7 +1073,7 @@ def getSampleStats(sample, ls, adj_pairs, class_metrics, landscape_metrics):
     sample_out['lme_largest_patch_index'] = \
         landscape_metrics['largest_patch_index']
 
-    return(sample_out)
+    return(sample_out.to_frame().T)
      
 
 # %%%% Plotting functions
@@ -1204,10 +1205,8 @@ def plotCaseLandscape(sid, raster, classes, comps, shape,
         # for i in np.arange(len(comps)):
         #    ax[i, 1].set_ylim([0, 1.05*vmax])
 
-        #fig.subplots_adjust(hspace=0.4)
-        fig.suptitle('Sample ID: ' + str(sid),
-                     fontsize=24, y=.95)
-        plt.tight_layout()
+        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     return(fig)
 
@@ -1283,10 +1282,8 @@ def plotDiscreteLandscape(sid, raster, classes, comps, shape,
         # for i in np.arange(len(comps)):
         #    ax[i, 1].set_ylim([0, 1.05*vmax])
 
-        #fig.subplots_adjust(hspace=0.85)
-        fig.suptitle('Sample ID: ' + str(sid),
-                     fontsize=24, y=.95)
-        plt.tight_layout()
+        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         
 
     return(fig)
@@ -1366,10 +1363,8 @@ def plotCompLandscape(sid, raster, classes, comps, shape,
         # for i in np.arange(len(comps)):
         #    ax[i, 1].set_ylim([0, 1.05*vmax])
 
-        #fig.subplots_adjust(hspace=0.85)
-        fig.suptitle('Sample ID: ' + str(sid),
-                     fontsize=24, y=.95)
-        plt.tight_layout()
+        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         
 
     return(fig)
@@ -1461,9 +1456,9 @@ def plotPatchHists(sid, df, res_pth):
 
     fig.subplots_adjust(hspace=0.4)
     fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     fig.savefig(os.path.join(res_pth, sid +'_lme_patch_metrics_hists.png'),
                 bbox_inches='tight', dpi=300)
-    plt.tight_layout()
     plt.close()
 
     return(fig)
@@ -1526,9 +1521,9 @@ def plotClassHists(sid, df, res_pth):
 
     fig2.subplots_adjust(hspace=0.4)
     fig2.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     fig2.savefig(os.path.join(res_pth, sid +'_lme_class_coverage.png'),
                  bbox_inches='tight', dpi=300)
-    plt.tight_layout()
     plt.close()
 
     return([fig, fig2])
@@ -1570,8 +1565,8 @@ def plotViolins(tbl, grps, glab, signal, slab, fname):
     ax.set_xlabel(glab)
     ax.set_ylabel(slab)
     sns.set(font_scale = 2)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     fig.savefig(fname, bbox_inches='tight', dpi=300)
-    plt.tight_layout()
     plt.close()
          
     return(0)
@@ -1624,10 +1619,6 @@ def main(args):
         Nsteps = 7
         printProgressBar(Nsteps*(0), Nsteps*(numsamples), suffix='')
 
-        print(st)
-        sys.exit()        
-
-
         # %% loops over samples in this study
         for index, sample in study.samples.iterrows():
             
@@ -1639,10 +1630,15 @@ def main(args):
             
             landpkl = os.path.join(study.dat_pth, 
                                    sample['results_dir'],
-                                   sid +'.pkl')
+                                   sid +'_landscape.pkl')
+            
+            samplcsv = os.path.join(study.dat_pth, 
+                                    sample['results_dir'],
+                                    sid +'_sample_tbl.csv')
             
             # if processed landscape picle file do not exist
-            if REDO or (not os.path.exists(landpkl)):
+            #if REDO or (not os.path.exists(landpkl)):
+            if REDO or (not os.path.exists(samplcsv)):
             
                 # STEP 1: loading data
                 progressBar(index, numsamples, 1, Nsteps, msg, 
@@ -1659,48 +1655,54 @@ def main(args):
                             'computing space statistics...')
                 land.getSpaceStats()
                 
+                # STEP 4: pylandstats analysis
+                # Regular metrics can be computed at the patch, class and
+                # landscape level. For list of all implemented metrics see: 
+                # https://pylandstats.readthedocs.io/en/latest/landscape.html
+                progressBar(index, numsamples, 4, Nsteps, msg, 
+                            'running pylandstat analysis on LME patches...')
+                
+                lme_pth = os.path.join(land.res_pth, 'LME_Analysis')
+                if not os.path.exists(lme_pth):
+                    os.makedirs(lme_pth)
+                sample_out = land.landscapeAnalysis(sample, lme_pth)
+                
+                land.plotLMELandscape(lme_pth)
+                
+                # STEP 5: prints LMEs and kernel stats
+                progressBar(index, numsamples, 5, Nsteps, msg, 
+                            'printing LMEs and factor index maps...')
+                
+                fact_pth = os.path.join(land.res_pth, 'Space_Factors')
+                if not os.path.exists(fact_pth):
+                    os.makedirs(fact_pth)
+                    
+                land.plotColocLandscape(fact_pth)
+                land.plotNNDistLandscape(fact_pth)
+                land.plotRHFuncLandscape(fact_pth)
+                land.plotGOrdLandscape(fact_pth)
+                land.plotFactorCorrelations(fact_pth)
+                
                 # pickle results of quadrats analysis (for faster re-runs)
                 with open(landpkl, 'wb') as f:  
                     pickle.dump([land], f)  
-            
-            else:
-                # STEP 4: loads pickled landscape data
-                progressBar(index, numsamples, 4, Nsteps, msg, 
-                            'loading landscape data...')
-                with open(landpkl, 'rb') as f:  
-                    [land] = pickle.load(f) 
+                del land
+                
+                # save table results (for faster re-runs)
+                sample_out.to_csv(samplcsv, index=False)
                     
-            # STEP 5: pylandstats analysis
-            # Regular metrics can be computed at the patch, class and
-            # landscape level. For list of all implemented metrics see: 
-            # https://pylandstats.readthedocs.io/en/latest/landscape.html
-            progressBar(index, numsamples, 5, Nsteps, msg, 
-                        'running pylandstat analysis on LME patches...')
-            
-            lme_pth = os.path.join(land.res_pth, 'LME_Analysis')
-            if not os.path.exists(lme_pth):
-                os.makedirs(lme_pth)
-            sample_out = land.landscapeAnalysis(sample, lme_pth)
-            
-            land.plotLMELandscape(lme_pth)
-            
+            else:
+                # STEP 6: loads pickled landscape data
+                progressBar(index, numsamples, 6, Nsteps, msg, 
+                            'loading landscape data...')
+                #with open(landpkl, 'rb') as f:  
+                #    [land] = pickle.load(f) 
+                sample_out = pd.read_csv(samplcsv)
+                    
             # update sample table
             study.addToSamplesOut(sample_out)
                 
-            # STEP 6: prints LMEs and kernel stats
-            progressBar(index, numsamples, 6, Nsteps, msg, 
-                        'printing LMEs and factor index maps...')
             
-            fact_pth = os.path.join(land.res_pth, 'Space_Factors')
-            if not os.path.exists(fact_pth):
-                os.makedirs(fact_pth)
-                
-            land.plotColocLandscape(fact_pth)
-            land.plotNNDistLandscape(fact_pth)
-            land.plotRHFuncLandscape(fact_pth)
-            land.plotGOrdLandscape(fact_pth)
-            land.plotFactorCorrelations(fact_pth)
-
         # %% End Steps
         progressBar(index, numsamples, 7, Nsteps, msg, 
                    'saving summary tables...')
@@ -1719,30 +1721,41 @@ def main(args):
         
         study.samples_out.to_csv(tblname, index=False)
         
-        cols = ['num_cells', 'num_lmes', 'landscape_area', 
-                'adjacency_index', 'lme_contagion',
-                'lme_Shannon', 'lme_shape_index', 'lme_Simpson', 
-                'lme_num_patches',
-                'lme_patch_density', 'lme_total_edge', 'lme_edge_density',
-                'lme_largest_patch_index']
+        out_pth = os.path.join(study.dat_pth, 'results', 'LME_stats')
+        if not os.path.exists(out_pth):
+            os.makedirs(out_pth)
         
-        labs = ['Number of Cells', 'Number of LMEs', 'Landscape Area', 
-                'LME Adjacency Index', 'LME Contagion',
-                'LME Shannon Index', 'LME Shape Index', 'LME Simpson Index', 
-                'LME Number of Patches', 'LME Patch Density', 
-                'LME Total Edge', 'LME Edge Density', 
-                'LME Largest Patch Index']
-        
-        for i, c in enumerate(cols):
+        if (len(study.samples_out) > 4):
             
-            _= plotViolins(study.samples_out,
-                           'cohort', "Cohort",
-                           c, labs[i], 
-                           os.path.join(study.dat_pth, 
-                                        'results',
-                                        study.name + '_' + cols[i] + '.png'))
-
-
+            cols = ['num_cells', 'num_cells', 
+                    'num_lmes', 'landscape_area', 
+                    'adjacency_index', 'lme_contagion',
+                    'lme_Shannon', 'lme_shape_index', 
+                    'lme_Simpson', 
+                    'lme_num_patches',
+                    'lme_patch_density', 'lme_total_edge', 'lme_edge_density',
+                    'lme_largest_patch_index']
+            
+            labs = ['Number of Cells', 'Number of Cells',
+                    'Number of LMEs', 'Landscape Area', 
+                    'LME Adjacency Index', 'LME Contagion',
+                    'LME Shannon Index', 'LME Shape Index', 
+                    'LME Simpson Index', 
+                    'LME Number of Patches', 'LME Patch Density', 
+                    'LME Total Edge', 'LME Edge Density', 
+                    'LME Largest Patch Index']
+            
+            for i, c in enumerate(cols):
+                
+                _= plotViolins(study.samples_out,
+                               'cohort', "Cohort",
+                               c, labs[i], 
+                               os.path.join(out_pth,
+                                            study.name + '_' + \
+                                                cols[i] + '.png')) 
+        else:
+            print("More samples are required for cohort analysis...")   
+    
 
     # %% end
     

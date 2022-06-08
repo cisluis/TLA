@@ -20,7 +20,7 @@ def printProgressBar(iteration, total,
                      prefix='Progress', 
                      suffix='Completed',
                      decimals=1, length=50,
-                     fill='█', printEnd="\r"):
+                     fill='█'):
     """
     Call in a loop to create terminal progress bar
     @params:
@@ -31,16 +31,20 @@ def printProgressBar(iteration, total,
         decimals    - Optional  : number of decimals in percent (Int)
         length      - Optional  : character length of bar (Int)
         fill        - Optional  : bar fill character (Str)
-        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
     """
-    percent = ("{0:." +
-               str(decimals) +
+    #import sys
+    
+    percent = ("{0:." + str(decimals) +
                "f}").format(100 * (iteration / float(total)))
     filledLength = int(length * iteration // total)
     bar = fill * filledLength + '-' * (length - filledLength)
-    suf = suffix[0:100].ljust(100, " ")
-    print(f'\r{prefix} |{bar}| {percent}% {suf}', end=printEnd)
-
+    suf = suffix[0:80].ljust(80, " ")
+    out = f'\r{prefix} |{bar}| {percent}% {suf}'
+    print(out, end='\r')
+    #print(out)
+    #sys.stdout.write(out)
+    #sys.stdout.flush()
+    
     # Print New Line on Complete
     if iteration == total:
         print()
@@ -658,6 +662,7 @@ def comp_correlations(raster, comps, classes, ttl, lims):
 
     fig.subplots_adjust(hspace=0.4)
     fig.suptitle(ttl, fontsize=24, y=.95)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     return(fig)
 
@@ -722,6 +727,7 @@ def factor_correlations(rasteri, comps1, tti, limsi,
 
     fig.subplots_adjust(hspace=0.4)
     fig.suptitle(ttl, fontsize=24, y=.95)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     return(fig)
 

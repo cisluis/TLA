@@ -1,0 +1,2 @@
+name,raw_path,raw_samples_table,raw_classes_table,data_path,scale,units,binsiz,BLOBS,DTHRES,FILTER_CODE,HIGH_DENS_CODE,LOW_DENS_CODE
+DCIS_22_set,DCIS_22_set/raw_data,raw_samples.csv,raw_classes.csv,DCIS_22_set/data,0.0075,[mm],100,FALSE,0.001,t,t,e

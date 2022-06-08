@@ -57,8 +57,103 @@ The six basic implemented distribution metrics, calculated across patches (and d
 6.	__Coefficient of variation__, (or variance) specified by the suffix `_cv` to the method name,  e.g. `area_cv`
 
 
+### Spatial Statistic Factors
+
+In order to get local measures of spatial statistics (aka spatial factors), a landscape is segmented into quadrats for which each statistics is evaluated. In many cases, each quadrat is further segmented into sub-quadrats in order to perform the spatial calculations. The calculated index is then assigned to the whole quadrat. 
+This TLA implementation use a convolution smoothing function:
+<div align="center">
+<img src="conv.png" width="400">
+</div>
+<div align="center">
+<img src="https://latex.codecogs.com/svg.image?y_{m,n} = \sum_i\sum_j x_{i,j}\cdot w_{m-i, n-j}" /></div>
+with _w_ the weighted kernel for the spatial convolution.
+TLA uses a circular kernel with uniform weights as a replacement for quadrats, and sub-quadrats. Thus Instead of segmenting the landscape into a grid to estimate spatial statistics, it estimates the statistical measure in each kernel around each pixel. 
+This allows for calculating full resolution fields in a computationally efficient way.
 
 
+#### 1. Colocalization index
+
+Pairwise Morisita-Horn index between two classes is measured in each region _(x,y)_ as the overlap of the spatial distributions:
+
+<div align="center">
+<img src="https://latex.codecogs.com/gif.latex? M_{rt}(x,y) = \frac{2 \cdot\sum_i{\left(n_i(x,y) \cdot m_i(x,y)\right)}}{\sum_i{(m_i(x,y))^2} + \sum_i{(n_i(x,y))^2}}" /> </div>
+
+with the distributions of abundances of "ref" species _r_ and "test" _t_ species in each sub-region _i_ of the _(x,y)_ region given as:
+
+<div align="center">
+<img src="https://latex.codecogs.com/svg.image?\left\{\begin{matrix}N_r(x,y)&space;&&space;=&space;&\sum_i{n_i(x,y)}&space;\\N_t(x,y)&space;&&space;=&space;&\sum_i{m_i(x,y)}\end{matrix}\right." /></div>
+
+This index measures the degree of overlap between the two spatial distributions, telling whether the two distributions are similar or not:
+
+* _M_ ~ 0: ref and test cells are excluded from each other
+* _M_ ~ 1: ref and test cells are similarly distributed in space
+
+__Attention:__ this measure is very sensitive to low seeding.  Particularly when one or both distributions have a many sub-regions with zero abundance. Namely, when the number of points of a particular cell type is significantly less than the number of sub-regions (i.e. less than one cell per sub-region in average) it's statistically impossible to distinguish discrete realizations of a non-uniform distribution from a low-seeded uniform distribution. Therefore for low-seeding cases, the Morisita-Horn index could be inflated, and not trustworthy.
+
+This measure is symmetric, and the spatial profiles characterize the prevalence and heterogeneity in colocalization of two cell types. All pair combinations are calculated.
+
+
+#### 2. Nearest Neighbors index
+
+Measures the enrichment of nearest neighbors between pairs of cell type classes, "ref" cell type (blue dots) and the "test" cell type (red dots):
+<div align="center">
+<img src="nnind.png" width="150">
+</div>
+For each ref cell the distance to closest ref cell _d<sub>min</sub>(r)_ and the distance to the closest test cell _d<sub>min</sub>(t)_ are found and averaged in each region _(x,y)_, then the index is given by the ratio:
+<div align="center">
+<img src="https://latex.codecogs.com/svg.image? N_{rt}(x,y) = \log \left(\frac{\langle d_{\text{min}}(t)\rangle_{(x,y)}}{\langle d_{\text{min}}(r)\rangle_{(x,y)} } \right)" /></div>
+
+This measure has the properties:
+
+* _N_ > 0: if ref and test cells are segregated from each other, meaning next to a ref cell is more likely to find another ref cell than a test cell.
+* _N_ ~ 0: if ref and test cells are well mixed together, meaning the next to a ref cell is equally likely to find a ref cell or test cell
+* _N_ < 0: if ref cells are individually infiltrated, meaning that next to a ref cell is more likely to find a test cell than a ref cell. This will happen if test cell are mixed in but much less abundant.
+
+This measure is different from the colocalization score in that it captures the character of cell-cell closeness between different cell types, typically imposing a weaker condition than overall spatial distribution similarity. Namely, if two cell types are "colocalized" in the Morisita-Horn index sense (_M_ ~ 1) then typically _N_ ~ 0, but the converse is not necessarily true: two cell types can be "proximal to each other", _i.e._  _N_ ~ 0, and still have very different spatial distributions, specially if the abundances of the two types is very different. Therefore the spatial profiles of this factor characterize the heterogeneity in mixing of cells in terms of their typical observed proximity.
+
+This is an asymmetric pairwise measure that is sensitive to relative abundance of cells.
+
+
+#### 3. Ripley’s H Index 
+
+This factor measures relative clustering of points as a function of scale of the scope. In this case, for a given radius _d_ and cell types "ref" (blue dots) and "test" (red dots):
+<div align="center">
+<img src="rhind.png" width="150">
+</div>
+For each ref cell in a given region _(x,y)_ we calculate the number of test cells _I<sub>rt</sub>(d)_ inside a radius _d_ from it. The mean across all ref cells in _(x,y)_ normalized by the density λ<sub>t</sub> of test cells gives the Ripley's _K_ function:
+
+<div align="center">
+<img src="https://latex.codecogs.com/svg.image? K_{rt}(x,y) = \frac{1}{\lambda_{\text{t}}}\langle I_{\text{rt}}(d)\rangle_{(x,y)} " /></div>
+
+If the distribution of test points is homogeneous, the expected value of _I_ should approach _E = Aλ<sub>t</sub>_ with _A_= πd<sup>2</sup> the area of the circle. Therefore _K_ is given by the proportion of observed to expected points in the circle. The more practical _H_ function is defined as:
+
+<div align="center">
+<img src="https://latex.codecogs.com/svg.image? H_{rt}(x,y) = \sqrt{\frac{K_{rt}(x,y)}{\pi}} - d" /></div>
+
+This is a measure of the level of clustering of test cells around ref cells at the scale _d_. Typically, this measure is used to assess the structure of a spatial distribution, generating a curve as a function of _d_ that characterize how the clumping changes with the distance, leading to estimation of natural scales and correlation distances in the system. Given that TLA generates local estimates of each factor, it uses only one arbitrary value, _d_ equals sub-region size, to evaluate the Ripley's H function as a spatial factor. It has the following properties:
+
+* _H_ > 0: if test cells cluster around ref cells
+* _H_ ~ 0: if ref and test cells are mixed uniformly
+* _H_ < 0: if test cells are excluded from ref cells
+
+This is yet another factor that describes the mixing of two class types in a slightly different way. This measure refers to the level of clumping at a specific scale _d_. It is a way related to the Nearest Neighbor index, more stringent in the continuous aspect of the cell's spatial distribution but yet limited to a length scale. Therefore, this is an intermediate approach in terms of spatial distribution comparisons. 
+
+This is not only an asymmetric measure, but also not an identity. Applying the measure on ref cells with themselves (i.e. test cells are the same as ref cells) does not necessarily return a trivial identity value, but a measure of the degree of clumping of ref cells with themselves, producing a measure of clustering. Pairwise comparisons give a measure of relative clumping, or clustering, of test cells __around__ ref cells. 
+
+
+#### 4. Getis-Ord Z score and HOT index
+
+This is a standard measure of enrichment of cell abundance with respect to the total study area (landscape). It consist of a general inferential _Z_ statistic, tested in the context of the null hypothesis. See [ArcGIS documentation](https://pro.arcgis.com/en/pro-app/2.8/tool-reference/spatial-statistics/h-how-high-low-clustering-getis-ord-general-g-spat.htm) for mathematical expressions and definitions.
+
+The null hypothesis states that there is no spatial clustering of feature values. When the corresponding p-value is statistically significant the null hypothesis can be rejected in one of two ways according to the sign of the z-score: if positive, the observed index is larger than expected, indicating that high values for the attribute (cell abundance) are clustered in the study area. If the z-score value is negative, the observed index is smaller than expected indicating that low values for the attribute (cell abundance, hence depletion) are clustered in the study area.
+
+Along with a spatial factor for the z-scores, TLA generate a HOT factor consisting of:
+
+* HOT ~ 1: if region _(x,y)_ has more cells than expected
+* HOT ~ 0: if region _(x,y)_ has a expected density (null hypothesis cannot be rejected)
+* HOT ~ -1: if region _(x,y)_ has less cells than expected
+
+These spatial profiles characterize hotspots in relation to the __whole study area__ (sample landscape), indicating regions of abundance or depletion for each cell type. Overlaps for different classes can be generated to detects mutual hot/cold spotting in different combinations. 
 
 
 ## References:
@@ -66,8 +161,16 @@ The six basic implemented distribution metrics, calculated across patches (and d
 1. Mcgarigal, K., Cushman, S., & Ene, E. (2012). FRAGSTATS v4: Spatial Pattern Analysis Program for Categorical and Continuous Maps. Retrieved from http://www.umass.edu/landeco/research/fragstats/fragstats.html
 2. Hesselbarth, M. H. K., Sciaini, M., With, K. A., Wiegand, K., & Nowosad, J. (2019). landscapemetrics: an open-source R tool to calculate landscape metrics. Ecography, 42(10), 1648–1657. https://doi.org/10.1111/ecog.04617
 3. Nowosad, J., & Stepinski, T. F. (2019). Information theory as a consistent framework for quantification and classification of landscape patterns. Landscape Ecology, 34(9), 2091–2101. https://doi.org/10.1007/s10980-019-00830-x
+4. Wolda H. Similarity indices, sample size and diversity. Oecologia. 1981 Sep;50(3):296-302.
+5. Magurran A.E. (2005) Biological diversity. Curr Biol 15:R116-8
+6. Rempala G.A., Seweryn M. (2013) Methods for diversity and overlap analysis in T-cell receptor populations. J Math Biol 67:1339-68
+4. Altman, Naomi S. (1992). "An introduction to kernel and nearest-neighbor nonparametric regression". The American Statistician. 46 (3): 175–185.
+4. Everitt, Brian S.; Landau, Sabine; Leese, Morven; and Stahl, Daniel (2011) "Miscellaneous Clustering Methods", in Cluster Analysis, 5th Edition, John Wiley & Sons, Ltd., Chichester, UK
 4. Bosch, M. (2019). PyLandStats: An open-source Pythonic library to compute landscape metrics. BioRxiv, (October), 715052. https://doi.org/10.1101/715052
- 
+5. Ripley, B.D. (1976). "The second-order analysis of stationary point processes". Journal of Applied Probability. 13 (2): 255–266. doi:10.2307/3212829. JSTOR 3212829.
+6. Dixon, Philip M. (2002). "Ripley's K function". In El-Shaarawi, Abdel H.; Piegorsch, Walter W. (eds.). Encyclopedia of Environmetrics. John Wiley & Sons. pp. 1796–1803. ISBN 978-0-471-89997-6.
+5. Getis, Arthur, and J. K. Ord. "The Analysis of Spatial Association by Use of Distance Statistics." Geographical Analysis 24, no. 3. 1992.
+6. Mitchell, Andy. The ESRI Guide to GIS Analysis, Volume 2. ESRI Press, 2005.
 
 ---
 ---
@@ -112,6 +215,28 @@ then, each module is ran with the syntax:
 
 ``` 
 
+#### Direct use from python
+
+TLA scripts can be run directly from python, this is a simple option when the bash script doesn't work (eg from a Windows system). In these cases use the option `--redo` if you want to redo the analysis (ie. redo set to `TRUE`).
+
+1. To run `TLA setup` use the following instructions:
+
+```
+> python source/tla_setup.py {argument table} [--redo]
+```
+
+2. To run `TLA run` use the following instructions:
+
+```
+> python source/tla.py {argument table} [--redo]
+```
+
+1. To run `TLA ssh` use the following instructions:
+
+```
+> python source/tla_ssh.py {argument table} [--redo]
+```
+
 #### Argument table
 
 This is a comma separated file (CSV) containing the main arguments for all TLA modules, and it must be produced by the user. The example `test_set.csv` is provided as a template. 
@@ -123,9 +248,10 @@ TLA allows for batch processing of multiple studies if several rows are added in
 The arguments for a study are:
 
 1. `name`: (str) name to identify the study.
-2. `data_path`: (str) general path to the location of all the study data (all sample paths are relative to this one)
+2. `raw_path`: (str) path to the location of the study raw data
 3. `raw_samples_table`: (str) name of raw samples table (CSV). This table has all the relevant information for each individual sample in the study. 
 4. `raw_classes_table`: (str) name of classes table for this study.
+5. `data_path`: (str) path to the location of the study pre-processed data, which will be accessed by TLA. 
 5. `scale`: (float) scale of pixels in physical units (units/pixel)
 6. `units`: (str) name of physical units (e.g. `[um]`) 
 7. `binsiz`: (float) size of quadrat (kernel) binning for coarse graining.

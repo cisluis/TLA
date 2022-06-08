@@ -43,17 +43,18 @@ class Study:
       
       # loads arguments for this study
       self.name = study['name']
-      self.path = os.path.join(main_pth, study['path'])
+      self.raw_path = os.path.join(main_pth, study['raw_path'])
       
-      samples_file = os.path.join(self.path, study['raw_samples_table'])
+      samples_file = os.path.join(self.raw_path, study['raw_samples_table'])
       if not os.path.exists(samples_file):
           print("ERROR: samples file " + samples_file + " does not exist!")
           sys.exit()
       self.samples = pd.read_csv(samples_file)
+      self.samples.fillna('', inplace=True)
       
-      self.dat_pth = os.path.join(self.path, 'data')
-      if not os.path.exists(self.dat_pth):
-          os.makedirs(self.dat_pth)
+      self.dat_path = os.path.join(main_pth, study['data_path'])
+      if not os.path.exists(self.dat_path):
+          os.makedirs(self.dat_path)
 
       # the size of quadrats and subquadrats
       self.binsiz = int((study['binsiz']))
@@ -80,7 +81,7 @@ class Study:
       self.BLOBS = study['BLOBS']
 
       # reduces classes df to just the accepted types (i.e. `drop=False`)
-      classes_file = os.path.join(self.path, study['raw_classes_table'])
+      classes_file = os.path.join(self.raw_path, study['raw_classes_table'])
       if not os.path.exists(classes_file):
           print("ERROR: classes file " + classes_file + " does not exist!")
           sys.exit()
@@ -113,41 +114,40 @@ class Study:
       
       self.samples_out = self.samples_out.astype({'num_cells': int})
       self.samples_out = self.samples_out.astype(self.samples.dtypes)
-      self.samples_out.to_csv(os.path.join(self.dat_pth, 
+      self.samples_out.to_csv(os.path.join(self.dat_path, 
                                            self.name + '_samples.csv'),
                               index=False)
-      self.allstats_out.to_csv(os.path.join(self.dat_pth, 
+      self.allstats_out.to_csv(os.path.join(self.dat_path, 
                                             'results',
                                             self.name + '_samples_stats.csv'),
                                index=False)
-      self.allpops_out.to_csv(os.path.join(self.dat_pth,
+      self.allpops_out.to_csv(os.path.join(self.dat_path,
                                            'results',
                                            self.name + '_quadrat_stats.csv'), 
                               index=False)
       
       # plots distributions of quadrat stats
       self.classes = quadFigs(self.allpops_out, self.classes,
-                              os.path.join(self.dat_pth,
+                              os.path.join(self.dat_path,
                                            self.name + '_quadrat_stats.png'))
-      self.classes.to_csv(os.path.join(self.dat_pth, 
+      self.classes.to_csv(os.path.join(self.dat_path, 
                                        self.name + '_classes.csv'), 
                           index=False)
       
       
 class Sample:
     
-  def __init__(self, sample, study):
+  def __init__(self, samp, study):
       
       # creates sample object
-      self.sid = sample.sample_ID
+      self.sid = samp.sample_ID
       
       # raw data files
-      self.raw_cell_data_file = os.path.join(study.path, sample.coord_file)
-      self.raw_imfile = os.path.join(study.path, sample.image_file)
-      self.raw_mkfile = os.path.join(study.path, sample.mask_file)
+      self.raw_cell_data_file = os.path.join(study.raw_path, 
+                                             samp.coord_file)
       
       self.classes = study.classes    # cell classes
-      self.tbl = sample               # table of parameters (for output)
+      self.tbl = samp.copy()          # table of parameters (for output)
       self.cell_data = pd.DataFrame() # dataframe of cell data (coordinates)
       self.imshape = []               # shape of accepted image
       self.img = []                   # image array
@@ -170,7 +170,7 @@ class Sample:
       self.units = study.units
       
       # creates results folder and add path to sample
-      outpth = os.path.join(study.dat_pth, 'results')
+      outpth = os.path.join(study.dat_path, 'results')
       if not os.path.exists(outpth):
           os.makedirs(outpth)
       res_pth = os.path.join(outpth, self.sid)
@@ -180,25 +180,37 @@ class Sample:
       self.res_pth = res_pth
       
       # creates cellPos folder and add path to df
-      outpth = os.path.join(study.dat_pth, 'cellPos')
+      outpth = os.path.join(study.dat_path, 'cellPos')
       if not os.path.exists(outpth):
           os.makedirs(outpth)
       self.tbl['coord_file'] = 'cellPos/' + self.sid + '.csv'
       self.cell_data_file = os.path.join(outpth, self.sid + '.csv')
 
       # creates images folder and add path to df
-      outpth = os.path.join(study.dat_pth, 'images')
+      outpth = os.path.join(study.dat_path, 'images')
       if not os.path.exists(outpth):
           os.makedirs(outpth)
-      self.tbl['image_file'] = 'images/' + self.sid + '_img.jpg'
-      self.imfile = os.path.join(outpth, self.sid + '_img.jpg')
+      if (samp.image_file ==''):
+          self.tbl['image_file'] = ''
+          self.imfile = ''  
+          self.raw_imfile = ''
+      else: 
+          self.tbl['image_file'] = 'images/' + self.sid + '_img.jpg'
+          self.imfile = os.path.join(outpth, self.sid + '_img.jpg')
+          self.raw_imfile = os.path.join(study.raw_path, samp.image_file)
 
-      # creates raster folder and add path to df
-      outpth = os.path.join(study.dat_pth, 'rasters')
+      # creates blob mask folder and add path to df
+      outpth = os.path.join(study.dat_path, 'rasters')
       if not os.path.exists(outpth):
           os.makedirs(outpth)
       self.tbl['mask_file'] = 'rasters/' + self.sid + '_mask.npz'
-      self.mkfile = os.path.join(outpth, self.sid + '_mask.npz')
+      self.mkfile = os.path.join(outpth, self.sid + '_mask.npz')    
+      if (samp.mask_file ==''):    
+          self.raw_mkfile = ''
+      else:
+          self.raw_mkfile = os.path.join(study.raw_path, samp.mask_file)
+          
+      # creates raster folder and add path to df
       self.tbl['raster_file'] = 'rasters/' + self.sid + '_raster.npz'
       self.raster_file = os.path.join(outpth, self.sid + '_raster.npz')
       
@@ -227,7 +239,7 @@ class Sample:
       xmin, xmax = int(np.min(cxy.x)), int(np.max(cxy.x))
       ymin, ymax = int(np.min(cxy.y)), int(np.max(cxy.y))
 
-      imshape = [(ymax - ymin) + 2*edge, (xmax - xmin) + 2*edge]
+      imshape = [np.nan, np.nan]
 
       # reads image file (if exists)
       imfile_exist = os.path.exists(self.raw_imfile)
@@ -251,13 +263,19 @@ class Sample:
           ims = np.rint(resize(ims, (msc.shape[0], msc.shape[1], 3),
                                anti_aliasing=True, 
                                preserve_range=True)).astype('uint8')
+          
+          #rspan = np.min([ims.shape[0], msc.shape[0]]) - 1
+          #cspan = np.min([ims.shape[1], msc.shape[1]]) - 1
+          #aux = np.zeros((imshape[0], imshape[1], 3))
+          #aux[0:rspan, 0:cspan, :] = ims[0:rspan, 0:cspan, :]
+          #ims = aux.copy()
 
       # limits for image cropping
-      rmin = np.max([0, ymin - edge])
-      cmin = np.max([0, xmin - edge])
-      rmax = np.min([imshape[0], ymax + edge])
-      cmax = np.min([imshape[1], xmax + edge])
-      imshape = [rmax - rmin + 1, cmax - cmin + 1]
+      rmin = np.nanmax([0, ymin - edge])
+      cmin = np.nanmax([0, xmin - edge])
+      rmax = np.nanmin([imshape[0] - 1, ymax + edge])
+      cmax = np.nanmin([imshape[1] - 1, xmax + edge])
+      imshape = [int(rmax - rmin + 1), int(cmax - cmin + 1)]
 
       # shifts coordinates
       cell_data = xyShift(cxy, imshape, [rmin, cmin], self.scale)
@@ -286,8 +304,11 @@ class Sample:
       # saves main data files
       self.cell_data.to_csv(self.cell_data_file, index=False)
       self.classes.to_csv(self.classes_file, index=False)
-      io.imsave(self.imfile, self.img, check_contrast=False)
+      
+      if (self.imfile != ''):
+          io.imsave(self.imfile, self.img, check_contrast=False)
       np.savez_compressed(self.mkfile, mask=self.msk )
+          
       np.savez_compressed(self.raster_file,
                           roi=self.roiarr,
                           kde=self.kdearr,
@@ -300,7 +321,9 @@ class Sample:
       self.cell_data = pd.read_csv(self.cell_data_file)
       self.classes = pd.read_csv(self.classes_file)
       
-      self.img = io.imread(self.imfile)
+      if (self.imfile != ''):
+          self.img = io.imread(self.imfile)
+          
       aux = np.load(self.mkfile)
       self.msk = aux['mask']
       
@@ -1170,6 +1193,7 @@ def main(args):
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
         argsfile = os.path.join(main_pth, 'test_set.csv')
+        #argsfile = os.path.join(main_pth, 'BE_set.csv')
         REDO = False
     else:
         # running from the CLI using bash script
@@ -1180,7 +1204,6 @@ def main(args):
 
     print("==> The working directory is: " + main_pth)
     
-
     if not os.path.exists(argsfile):
         print("ERROR: The specified argument file does not exist!")
         sys.exit()
@@ -1215,7 +1238,7 @@ def main(args):
 
             # %% STEP 1: creates data directories and new sample table
             progressBar(index, numsamples, 1, Nsteps, msg, 
-                        'creating data folders...')
+                        'checking data folders...')
             
             # creates sample object and data folders for pre-processed data
             sample = Sample(samp, study)
