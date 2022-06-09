@@ -1052,7 +1052,8 @@ def SSH_ecological_detector(Y, factor_name,
                             X2, strata_name2,
                             THR=0.05):
     """
-    This function identifies the impact of differences between factors  X1 ~ X2
+    This function identifies the impact of differences between 
+    factors  X1 ~ X2
     
     Ported from R source: https://CRAN.R-project.org/package=geodetector
     Ref: https://cran.r-project.org/web/packages/

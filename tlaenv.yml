@@ -346,7 +346,7 @@ dependencies:
   - tifffile=2020.10.1=py38h0cf3a3e_2
   - tiledb=2.3.4=h8370e7a_0
   - tinycss2=1.1.1=pyhd8ed1ab_0
-  - tk=8.6.11=h3fd3227_1
+  - tk=8.6.12=h5d9f67b_0
   - toml=0.10.2=pyhd3eb1b0_0
   - tomli=2.0.1=pyhd8ed1ab_0
   - toolz=0.11.2=pyhd3eb1b0_0
