@@ -810,13 +810,13 @@ def main(args):
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
         argsfile = os.path.join(main_pth, 'test_set.csv')
-        #REDO = False
+        REDO = False
     else:
         # running from the CLI using bash script
         # path of directory containing this script
         main_pth = os.getcwd()
         argsfile = os.path.join(main_pth, args.argsfile)
-        #REDO = args.redo
+        REDO = args.redo
 
     print("==> The working directory is: " + main_pth)
 
@@ -859,85 +859,103 @@ def main(args):
             # creates a message to display in progress bar
             msg = '==> ' + sid + "; [{0}/{1}]".format(index + 1, numsamples)
             
-            landpkl = os.path.join(study.dat_pth,
+            sshpkl = os.path.join(study.dat_pth,
                                    sample['results_dir'],
-                                   sid +'_landscape.pkl')
+                                   sid +'_ssh.pkl')
             
-            # %% STEP 1: loads pickled landscape data
-            if (os.path.exists(landpkl)):
-  
-                progressBar(index, numsamples, 1, Nsteps, msg, 
-                            'loading landscape data...')
-                with open(landpkl, 'rb') as f:  
-                    [land] = pickle.load(f) 
-            else:
-                print("==> ERROR! pickle image does not exist: " + landpkl +
-                      "; Make sure you ran TLA for this sample...")
-                sys.exit()
-
-            out_pth = os.path.join(land.res_pth, 'SSH_Analysis')
-            if not os.path.exists(out_pth):
-                os.makedirs(out_pth)
+            if REDO or (not os.path.exists(sshpkl)):
+            
+                landpkl = os.path.join(study.dat_pth,
+                                       sample['results_dir'],
+                                       sid +'_landscape.pkl')
+                
+                # %% STEP 1: loads pickled landscape data
+                if (os.path.exists(landpkl)):
+      
+                    progressBar(index, numsamples, 1, Nsteps, msg, 
+                                'loading landscape data...')
+                    with open(landpkl, 'rb') as f:  
+                        [land] = pickle.load(f) 
+                else:
+                    print("==> ERROR! pickle image does not exist: " + landpkl +
+                          "; Make sure you ran TLA for this sample...")
+                    sys.exit()
+    
+                out_pth = os.path.join(land.res_pth, 'SSH_Analysis')
+                if not os.path.exists(out_pth):
+                    os.makedirs(out_pth)
+                        
+                [lmes, blobs] = strataFormating(land.lmearr, land.msk, 
+                                                land.classes, strata)
+                
+                # %% STEP 2: SSH analysis: coloc
+                progressBar(index, numsamples, 2, Nsteps, msg, 
+                            'running SSH analysis: coloc...')
+                if 'coloc' in factors:
+                    comps = [list(c) for c in 
+                             list(combinations(land.classes.index, 2))]
+                    _ = sshComps(land.sid, land.colocarr, 
+                                 land.imshape, land.scale, land.units, land.binsiz,
+                                 'coloc', comps, land.classes, 
+                                 lmes, blobs, strata, out_pth, subset = True)
+               
+                # %% STEP 3: SSH analysis for nndist fields
+                progressBar(index, numsamples, 3, Nsteps, msg, 
+                            'running SSH analysis: nndist...')
+                if 'nndist' in factors:
+                    comps = [list(c) for c in 
+                             list(permutations(land.classes.index, r=2))]
+                    _ = sshComps(land.sid, land.nndistarr, 
+                                 land.imshape, land.scale, land.units, land.binsiz,
+                                 'nndist', comps, land.classes, 
+                                 lmes, blobs, strata, out_pth, subset = True)
+               
+                # %% STEP 4: SSH analysis for rhfunc fields
+                progressBar(index, numsamples, 4, Nsteps, msg, 
+                            'running SSH analysis: rhfunc...')
+                if 'rhfunc' in factors:
+                    comps = [list(c) for c in 
+                             list(product(land.classes.index, repeat=2))]
+                    _ = sshComps(land.sid, land.rhfuncarr, 
+                                 land.imshape, land.scale, land.units, land.binsiz,
+                                 'rhfunc', comps, land.classes, 
+                                 lmes, blobs, strata, out_pth, subset = True)
+                             
+                # %% STEP 5: SSH analysis for geordG fields
+                progressBar(index, numsamples, 5, Nsteps, msg, 
+                            'running SSH analysis: geordG...')
+                if 'geordZ' in factors:
+                    comps = list(land.classes.index)
+                    _ = sshSubs(land.sid, land.geordGarr, 
+                                land.imshape, land.scale, land.units, land.binsiz,
+                                'geordZ', comps, land.classes, 
+                                lmes, blobs, strata, out_pth, subset = True)
+                    _ = sshSubs(land.sid, land.hotarr, 
+                                land.imshape, land.scale, land.units, land.binsiz,
+                                'HOT', comps, land.classes, 
+                                lmes, blobs, strata, out_pth, subset = True)
+    
+                # %% STEP 6: SSH analysis for abundance fields
+                progressBar(index, numsamples, 6, Nsteps, msg, 
+                            'running SSH analysis: abundance...')
+                if 'abundance' in factors:
+                    comps = list(land.classes.index)
+                    _ = sshSubs(land.sid, land.abuarr, 
+                                land.imshape, land.scale, land.units, land.binsiz,
+                                'abundance', comps, land.classes, 
+                                lmes, blobs, strata, out_pth, subset = True)
                     
-            [lmes, blobs] = strataFormating(land.lmearr, land.msk, 
-                                            land.classes, strata)
-            
-            # %% STEP 2: SSH analysis: coloc
-            progressBar(index, numsamples, 2, Nsteps, msg, 
-                        'running SSH analysis: coloc...')
-            if 'coloc' in factors:
-                comps = [list(c) for c in 
-                         list(combinations(land.classes.index, 2))]
-                _ = sshComps(land.sid, land.colocarr, 
-                             land.imshape, land.scale, land.units, land.binsiz,
-                             'coloc', comps, land.classes, 
-                             lmes, blobs, strata, out_pth, subset = True)
-           
-            # %% STEP 3: SSH analysis for nndist fields
-            progressBar(index, numsamples, 3, Nsteps, msg, 
-                        'running SSH analysis: nndist...')
-            if 'nndist' in factors:
-                comps = [list(c) for c in 
-                         list(permutations(land.classes.index, r=2))]
-                _ = sshComps(land.sid, land.nndistarr, 
-                             land.imshape, land.scale, land.units, land.binsiz,
-                             'nndist', comps, land.classes, 
-                             lmes, blobs, strata, out_pth, subset = True)
-           
-            # %% STEP 4: SSH analysis for rhfunc fields
-            progressBar(index, numsamples, 4, Nsteps, msg, 
-                        'running SSH analysis: rhfunc...')
-            if 'rhfunc' in factors:
-                comps = [list(c) for c in 
-                         list(product(land.classes.index, repeat=2))]
-                _ = sshComps(land.sid, land.rhfuncarr, 
-                             land.imshape, land.scale, land.units, land.binsiz,
-                             'rhfunc', comps, land.classes, 
-                             lmes, blobs, strata, out_pth, subset = True)
-                         
-            # %% STEP 5: SSH analysis for geordG fields
-            progressBar(index, numsamples, 5, Nsteps, msg, 
-                        'running SSH analysis: geordG...')
-            if 'geordZ' in factors:
-                comps = list(land.classes.index)
-                _ = sshSubs(land.sid, land.geordGarr, 
-                            land.imshape, land.scale, land.units, land.binsiz,
-                            'geordZ', comps, land.classes, 
-                            lmes, blobs, strata, out_pth, subset = True)
-                _ = sshSubs(land.sid, land.hotarr, 
-                            land.imshape, land.scale, land.units, land.binsiz,
-                            'HOT', comps, land.classes, 
-                            lmes, blobs, strata, out_pth, subset = True)
-
-            # %% STEP 6: SSH analysis for abundance fields
-            progressBar(index, numsamples, 6, Nsteps, msg, 
-                        'running SSH analysis: abundance...')
-            if 'abundance' in factors:
-                comps = list(land.classes.index)
-                _ = sshSubs(land.sid, land.abuarr, 
-                            land.imshape, land.scale, land.units, land.binsiz,
-                            'abundance', comps, land.classes, 
-                            lmes, blobs, strata, out_pth, subset = True)
+                # pickle results of quadrats analysis (for faster re-runs)
+                with open(sshpkl, 'wb') as f:  
+                    pickle.dump([sid, lmes, blobs], f)  
+                del land
+                
+            else:
+                # STEP 7: loads pickled landscape data
+                progressBar(index, numsamples, 6, Nsteps, msg, 
+                            'loading ssh data...')
+                with open(sshpkl, 'rb') as f:  
+                    [sid, lmes, blobs] = pickle.load(f) 
 
     # %% end
     

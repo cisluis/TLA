@@ -61,27 +61,27 @@ The six basic implemented distribution metrics, calculated across patches (and d
 
 In order to get local measures of spatial statistics (aka spatial factors), a landscape is segmented into quadrats for which each statistics is evaluated. In many cases, each quadrat is further segmented into sub-quadrats in order to perform the spatial calculations. The calculated index is then assigned to the whole quadrat. 
 This TLA implementation use a convolution smoothing function:
-<div align="center">
-<img src="conv.png" width="400">
-</div>
-<div align="center">
-<img src="https://latex.codecogs.com/svg.image?y_{m,n} = \sum_i\sum_j x_{i,j}\cdot w_{m-i, n-j}" /></div>
-with _w_ the weighted kernel for the spatial convolution.
+
+$$y_{m,n} = \sum_i\sum_j x_{i,j}\cdot w_{m-i, n-j}$$
+
+with $w$ the weighted kernel for the spatial convolution.
 TLA uses a circular kernel with uniform weights as a replacement for quadrats, and sub-quadrats. Thus Instead of segmenting the landscape into a grid to estimate spatial statistics, it estimates the statistical measure in each kernel around each pixel. 
 This allows for calculating full resolution fields in a computationally efficient way.
-
 
 #### 1. Colocalization index
 
 Pairwise Morisita-Horn index between two classes is measured in each region _(x,y)_ as the overlap of the spatial distributions:
 
-<div align="center">
-<img src="https://latex.codecogs.com/gif.latex? M_{rt}(x,y) = \frac{2 \cdot\sum_i{\left(n_i(x,y) \cdot m_i(x,y)\right)}}{\sum_i{(m_i(x,y))^2} + \sum_i{(n_i(x,y))^2}}" /> </div>
+$$M_{rt}(x,y) = \frac{2 \cdot\sum_i{\left(n_i(x,y) \cdot m_i(x,y)\right)}}{\sum_i{(m_i(x,y))^2} + \sum_i{(n_i(x,y))^2}}$$
 
 with the distributions of abundances of "ref" species _r_ and "test" _t_ species in each sub-region _i_ of the _(x,y)_ region given as:
 
-<div align="center">
-<img src="https://latex.codecogs.com/svg.image?\left\{\begin{matrix}N_r(x,y)&space;&&space;=&space;&\sum_i{n_i(x,y)}&space;\\N_t(x,y)&space;&&space;=&space;&\sum_i{m_i(x,y)}\end{matrix}\right." /></div>
+$$
+\begin{array}{lcr}
+N_r(x,y) & = & \sum_i{n_i(x,y)} \\
+N_t(x,y) & = & \sum_i{m_i(x,y)}
+\end{array}
+$$
 
 This index measures the degree of overlap between the two spatial distributions, telling whether the two distributions are similar or not:
 
@@ -100,8 +100,8 @@ Measures the enrichment of nearest neighbors between pairs of cell type classes,
 <img src="nnind.png" width="150">
 </div>
 For each ref cell the distance to closest ref cell _d<sub>min</sub>(r)_ and the distance to the closest test cell _d<sub>min</sub>(t)_ are found and averaged in each region _(x,y)_, then the index is given by the ratio:
-<div align="center">
-<img src="https://latex.codecogs.com/svg.image? N_{rt}(x,y) = \log \left(\frac{\langle d_{\text{min}}(t)\rangle_{(x,y)}}{\langle d_{\text{min}}(r)\rangle_{(x,y)} } \right)" /></div>
+
+$$N_{rt}(x,y) = \log \left(\frac{\langle d_{\text{min}}(t)\rangle_{(x,y)}}{\langle d_{\text{min}}(r)\rangle_{(x,y)} } \right)$$
 
 This measure has the properties:
 
@@ -122,13 +122,11 @@ This factor measures relative clustering of points as a function of scale of the
 </div>
 For each ref cell in a given region _(x,y)_ we calculate the number of test cells _I<sub>rt</sub>(d)_ inside a radius _d_ from it. The mean across all ref cells in _(x,y)_ normalized by the density λ<sub>t</sub> of test cells gives the Ripley's _K_ function:
 
-<div align="center">
-<img src="https://latex.codecogs.com/svg.image? K_{rt}(x,y) = \frac{1}{\lambda_{\text{t}}}\langle I_{\text{rt}}(d)\rangle_{(x,y)} " /></div>
+$$ K_{rt}(x,y) = \frac{1}{\lambda_{\text{t}}}\langle I_{\text{rt}}(d)\rangle_{(x,y)}$$
 
 If the distribution of test points is homogeneous, the expected value of _I_ should approach _E = Aλ<sub>t</sub>_ with _A_= πd<sup>2</sup> the area of the circle. Therefore _K_ is given by the proportion of observed to expected points in the circle. The more practical _H_ function is defined as:
 
-<div align="center">
-<img src="https://latex.codecogs.com/svg.image? H_{rt}(x,y) = \sqrt{\frac{K_{rt}(x,y)}{\pi}} - d" /></div>
+$$H_{rt}(x,y) = \sqrt{\frac{K_{rt}(x,y)}{\pi}} - d$$
 
 This is a measure of the level of clustering of test cells around ref cells at the scale _d_. Typically, this measure is used to assess the structure of a spatial distribution, generating a curve as a function of _d_ that characterize how the clumping changes with the distance, leading to estimation of natural scales and correlation distances in the system. Given that TLA generates local estimates of each factor, it uses only one arbitrary value, _d_ equals sub-region size, to evaluate the Ripley's H function as a spatial factor. It has the following properties:
 
@@ -373,12 +371,10 @@ Similarly, for each study a table of approved classes is saved. This table will 
 #### Local abundance and mixing scores:
 
 The study parameter `binsiz` defines a "quadrat" size that is used to coarse grain the landscape mosaic for local properties of cell abundance and uniformity of spatial distribution (mixing). In field ecology, quadrats are typically used to quantify small regions and produce spatial profiles across a landscape. Using this same principle we grid our landscape and count the abundance _N<sub>c</sub>_ of each cell type _c_ in each quadrat, as well as the value of a mixing index for each cell type, defined as:
-<div align="center">
-<img src="https://latex.codecogs.com/gif.latex? M_c = \frac{2 \cdot\sum{n_i \cdot m_i}}{\sum{(m_i)^2} + \sum{(n_i)^2}} = \frac{2}{1 + (L/N_c^2)\sum{n_i^2}}" /> </div>
+$$M_c = \frac{2 \cdot\sum{n_i \cdot m_i}}{\sum{(m_i)^2} + \sum{(n_i)^2}} = \frac{2}{1 + (L/N_c^2)\sum{n_i^2}}$$
 
 Calculated over _L_ sub-quadrats which are 5 times smaller that the quadrats (and thus _L_=25). This is a univariate version of the Morisita-Horn score ([Horn, 1966](https://www-jstor-org.ezproxy1.lib.asu.edu/stable/2459242)) comparing the observed spacial profile of cell counts _n<sub>i</sub>_ with an array of the same size and a uniform distribution _m<sub>i</sub>_ = constant and 
-<div align="center">
-<img src="https://latex.codecogs.com/gif.latex? N_c=\sum{n_i}=\sum{m_i}" /> </div>
+$$N_c=\sum{n_i}=\sum{m_i}$$
 
 This score is a simple way to account the degree of mixing (uniformity) of cells in a sample. A value _M<sub>c</sub>_ ~ 0 means that the sample is highly segregated (ie. variance across sub-quadrats is large) and a value _M<sub>c</sub>_ ~ 1 means that all sub-quadrats have very similar count values and thus, cells are uniformly distributed across the quadrat.
 
