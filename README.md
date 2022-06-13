@@ -87,4 +87,4 @@ Each TLA module has a separate Python scripts that can be run without using the 
 * [Install Linux on Windows with WSL](https://docs.microsoft.com/en-us/windows/wsl/install)
 * [How to Enable Bash in Windows 10](https://linuxhint.com/enable-bash-windows-10/)
 
-A simple option is to run the TLA scripts directly from python. These actions should be platform independent. See [python scripts](documentation/TLA_doc.md/#### Direct use from python) for instructions.
+A simple option is to run the TLA scripts directly from python. These actions should be platform independent. See python scripts section in [documentation](documentation/TLA_doc.md) for instructions.
