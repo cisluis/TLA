@@ -1192,16 +1192,12 @@ def SSH_factor_detector_df(data, y_column, x_column_nn, THR=0.05):
             lamda_1st_sum = 0
             lamda_2nd_sum = 0
             for s in strat:
-                yi = data.loc[data[x_column]== s][y_column]
+                yi = data.loc[data[x_column]== s][y_column].to_numpy()
                 LenInter = len(yi)
                 strataVar = 0
                 lamda_1st = 0
                 lamda_2nd = 0
-                if (LenInter <= 1):
-                    strataVar = 0
-                    lamda_1st = yi**2
-                    lamda_2nd = yi
-                else:
+                if (LenInter > 0):
                     strataVar = (LenInter - 1) * np.var(yi)
                     lamda_1st = (np.mean(yi))**2
                     lamda_2nd = np.sqrt(LenInter) * np.mean(yi)

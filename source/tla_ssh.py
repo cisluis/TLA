@@ -261,8 +261,7 @@ def strataFormating(lmearr, msk, classes, strata):
     
     return([lmes, blobs])
 
-
-def SSH(data, classes, 
+def SSH(sid, data, classes, 
         fact_col, factlab, 
         strata_cols, strlabs, out_pth):
     """
@@ -274,13 +273,16 @@ def SSH(data, classes,
     from myfunctions import SSH_ecological_detector_df
 
     # SSH, factor detector for both strata
-    sshtab = SSH_factor_detector_df(data, fact_col, strata_cols)
+    sshtab = SSH_factor_detector_df(data, fact_col,  strata_cols)
     
     fig, ax = sshPlotStratification(sshtab, data, factlab, strlabs)
     
     lmeticks = [lmeCode(x, len(classes)) for x in ax[0].get_xticks()]
-    ax[0].set_xticklabels(lmeticks)
-    plt.savefig(os.path.join(out_pth, 'SSH_factor_' + fact_col + '.png'),
+    ax[0].set_xticklabels(lmeticks, rotation = 90)
+    ax[1].set_xticklabels(ax[1].get_xticks(), rotation = 90)
+    
+    plt.savefig(os.path.join(out_pth, 
+                             sid + '_ssh_factor_' + fact_col + '.png'),
                 bbox_inches='tight', dpi=300)
     plt.close()
     
@@ -298,7 +300,8 @@ def SSH(data, classes,
                 sshrsk['stratum_j'] = [lmeCode(x, len(classes)) for x in aux]    
             sshrsk = sshrsk.loc[sshrsk['significance']]
             fil = os.path.join(out_pth,
-                               'SSH_risk_' + fact_col + '-' + stt +'.csv')
+                               sid + '_ssh_risk_' + fact_col + \
+                                   '-' + stt +'.csv')
             sshrsk.to_csv(fil, index=False)
     
     sshint = pd.DataFrame()
@@ -473,6 +476,13 @@ def sshComps(sid, raster,
         R = np.array([raster[r, c, :, :] for r in redges for c in cedges])
         L = np.array([lmes[r, c] for r in redges for c in cedges])
         B = np.array([blobs[r, c] for r in redges for c in cedges])    
+    else:
+        R = np.array([raster[r, c, :, :] for r in np.arange(imshape[0]) \
+                      for c in np.arange(imshape[1])])
+        L = np.array([lmes[r, c] for r in np.arange(imshape[0]) \
+                      for c in np.arange(imshape[1])])
+        B = np.array([blobs[r, c] for r in np.arange(imshape[0]) \
+                      for c in np.arange(imshape[1])])
     
     def func(comp):
         ia = comp[0]
@@ -491,20 +501,20 @@ def sshComps(sid, raster,
         data = pd.DataFrame({fact: Y[inx]})
         if 'LME' in strata:
             data['LME'] = L[inx].astype(np.int16)
-            plotFactorLandscape(sid, lmes, raster,
+            plotFactorLandscape(sid, lmes, raster[:, :, ia, ib],
                                 fact_name + ' in LMEs', fact_name,
-                                imshape, scale, units, binsiz, 
+                                imshape, scale, units, 5*binsiz, 
                                 fact + '_lmes', out_pth)
                     
         if 'Blob' in strata:
             data['Blob'] = B[inx].astype(np.int16)
-            plotFactorLandscape(sid, blobs, raster,
+            plotFactorLandscape(sid, blobs, raster[:, :, ia, ib],
                                 fact_name + ' in Blobs', fact_name,
-                                imshape, scale, units, binsiz, 
+                                imshape, scale, units, 5*binsiz, 
                                 fact + '_blobs', out_pth)
            
         # do SSH analysis on coloc factors
-        [aux, auy, auz] = SSH(data, classes, 
+        [aux, auy, auz] = SSH(sid, data, classes, 
                               fact, fact_name, 
                               strata, strata, out_pth)
         return([aux, auy, auz])
@@ -810,6 +820,7 @@ def main(args):
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
         argsfile = os.path.join(main_pth, 'test_set.csv')
+        #argsfile = os.path.join(main_pth, 'DCIS_22_set.csv')
         REDO = False
     else:
         # running from the CLI using bash script
@@ -834,7 +845,8 @@ def main(args):
         study = Study(st, main_pth)
         
         if debug:
-            study.samples = study.samples.iloc[:1]
+            #study.samples = study.samples.iloc[2:]
+            study.samples = study.samples.iloc[:1].reset_index()
             
         numsamples = len(study.samples.index)
 
@@ -894,8 +906,8 @@ def main(args):
                 if 'coloc' in factors:
                     comps = [list(c) for c in 
                              list(combinations(land.classes.index, 2))]
-                    _ = sshComps(land.sid, land.colocarr, 
-                                 land.imshape, land.scale, land.units, land.binsiz,
+                    _ = sshComps(land.sid, land.colocarr, land.imshape, 
+                                 land.scale, land.units, land.subbinsiz,
                                  'coloc', comps, land.classes, 
                                  lmes, blobs, strata, out_pth, subset = True)
                
@@ -905,8 +917,8 @@ def main(args):
                 if 'nndist' in factors:
                     comps = [list(c) for c in 
                              list(permutations(land.classes.index, r=2))]
-                    _ = sshComps(land.sid, land.nndistarr, 
-                                 land.imshape, land.scale, land.units, land.binsiz,
+                    _ = sshComps(land.sid, land.nndistarr, land.imshape, 
+                                 land.scale, land.units, land.subbinsiz,
                                  'nndist', comps, land.classes, 
                                  lmes, blobs, strata, out_pth, subset = True)
                
@@ -916,8 +928,8 @@ def main(args):
                 if 'rhfunc' in factors:
                     comps = [list(c) for c in 
                              list(product(land.classes.index, repeat=2))]
-                    _ = sshComps(land.sid, land.rhfuncarr, 
-                                 land.imshape, land.scale, land.units, land.binsiz,
+                    _ = sshComps(land.sid, land.rhfuncarr, land.imshape, 
+                                 land.scale, land.units, land.subbinsiz,
                                  'rhfunc', comps, land.classes, 
                                  lmes, blobs, strata, out_pth, subset = True)
                              
@@ -926,12 +938,12 @@ def main(args):
                             'running SSH analysis: geordG...')
                 if 'geordZ' in factors:
                     comps = list(land.classes.index)
-                    _ = sshSubs(land.sid, land.geordGarr, 
-                                land.imshape, land.scale, land.units, land.binsiz,
+                    _ = sshSubs(land.sid, land.geordGarr, land.imshape, 
+                                land.scale, land.units, land.subbinsiz,
                                 'geordZ', comps, land.classes, 
                                 lmes, blobs, strata, out_pth, subset = True)
-                    _ = sshSubs(land.sid, land.hotarr, 
-                                land.imshape, land.scale, land.units, land.binsiz,
+                    _ = sshSubs(land.sid, land.hotarr, land.imshape, 
+                                land.scale, land.units, land.subbinsiz,
                                 'HOT', comps, land.classes, 
                                 lmes, blobs, strata, out_pth, subset = True)
     
@@ -940,8 +952,8 @@ def main(args):
                             'running SSH analysis: abundance...')
                 if 'abundance' in factors:
                     comps = list(land.classes.index)
-                    _ = sshSubs(land.sid, land.abuarr, 
-                                land.imshape, land.scale, land.units, land.binsiz,
+                    _ = sshSubs(land.sid, land.abuarr, land.imshape, 
+                                land.scale, land.units, land.subbinsiz,
                                 'abundance', comps, land.classes, 
                                 lmes, blobs, strata, out_pth, subset = True)
                     
