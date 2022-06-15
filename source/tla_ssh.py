@@ -261,6 +261,7 @@ def strataFormating(lmearr, msk, classes, strata):
     
     return([lmes, blobs])
 
+
 def SSH(sid, data, classes, 
         fact_col, factlab, 
         strata_cols, strlabs, out_pth):
@@ -383,6 +384,13 @@ def sshSubs(sid, raster,
         R = np.array([raster[r, c, :] for r in redges for c in cedges])
         L = np.array([lmes[r, c] for r in redges for c in cedges])
         B = np.array([blobs[r, c] for r in redges for c in cedges])  
+    else:
+        R = np.array([raster[r, c, :, :] for r in np.arange(imshape[0]) \
+                      for c in np.arange(imshape[1])])
+        L = np.array([lmes[r, c] for r in np.arange(imshape[0]) \
+                      for c in np.arange(imshape[1])])
+        B = np.array([blobs[r, c] for r in np.arange(imshape[0]) \
+                      for c in np.arange(imshape[1])])
         
     def func(i):
         Y = R[:, i]
@@ -395,21 +403,22 @@ def sshSubs(sid, raster,
         data = pd.DataFrame({fact: Y[inx]})
         if 'LME' in strata:
             data['LME'] = L[inx].astype(np.int16)
-            plotFactorLandscape(sid, lmes, raster,
+            plotFactorLandscape(sid, lmes, raster[:, :, i],
                                 fact_name + ' in LMEs', fact_name,
-                                imshape, scale, units, binsiz, 
+                                imshape, scale, units, 5*binsiz, 
                                 fact + '_lmes', out_pth)
             
         if 'Blob' in strata:
             data['Blob'] = B[inx].astype(np.int16)
-            plotFactorLandscape(sid, blobs, raster,
+            plotFactorLandscape(sid, blobs, raster[:, :, i],
                                 fact_name + ' in Blobs', fact_name,
-                                imshape, scale, units, binsiz, 
+                                imshape, scale, units, 5*binsiz, 
                                 fact + '_blobs', out_pth)
         
         # do SSH analysis on coloc factors
-        [aux, auy, auz] = SSH(data, classes, 
-                              fact, fact_name, strata, strata, out_pth)
+        [aux, auy, auz] = SSH(sid, data, classes, 
+                              fact, fact_name, 
+                              strata, strata, out_pth)
         
         return([aux, auy, auz])
     
