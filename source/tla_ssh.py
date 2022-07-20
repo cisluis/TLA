@@ -822,14 +822,14 @@ def plotCompLandscape(sid, raster, classes, comps, shape,
 def main(args):
 
     # %% debug start
-    debug = False
+    debug = True
     
     if debug:
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'test_set.csv')
-        #argsfile = os.path.join(main_pth, 'DCIS_22_set.csv')
+        #argsfile = os.path.join(main_pth, 'test_set.csv')
+        argsfile = os.path.join(main_pth, 'DCIS_22_set.csv')
         REDO = False
     else:
         # running from the CLI using bash script
@@ -854,7 +854,7 @@ def main(args):
         study = Study(st, main_pth)
         
         if debug:
-            #study.samples = study.samples.iloc[2:]
+            study.samples = study.samples.iloc[2:]
             study.samples = study.samples.iloc[:1].reset_index()
             
         numsamples = len(study.samples.index)
