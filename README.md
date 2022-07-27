@@ -36,7 +36,7 @@ Optionally, to build a virtual environment for TLA step by step (including the S
 > conda create -n tlaenv python=3.8
 > conda activate tlaenv
 > conda install -y -c conda-forge spyder=5.3.0
-> conda install -y -c conda-forge geopandas matplotlib-base rasterio scipy openblas pylandstats tabulate swifter statannot
+> conda install -y -c conda-forge matplotlib-base scipy tabulate swifter statannot rasterio openblas geopandas pylandstats  
 > pip install KDEpy
 > conda install -y -c anaconda scikit-image statsmodels seaborn
 > conda update --all -y

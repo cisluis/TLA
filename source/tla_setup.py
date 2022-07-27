@@ -321,9 +321,6 @@ class Sample:
       self.cell_data = pd.read_csv(self.cell_data_file)
       self.classes = pd.read_csv(self.classes_file)
       
-      if (self.imfile != ''):
-          self.img = io.imread(self.imfile)
-          
       aux = np.load(self.mkfile)
       self.msk = aux['mask']
       
@@ -334,6 +331,11 @@ class Sample:
       self.mixarr = aux['mix']
       
       self.imshape = [self.roiarr.shape[0], self.roiarr.shape[1]]
+      
+      if (self.imfile != ''):
+          self.img = io.imread(self.imfile)
+      else:    
+          self.img = np.zeros((self.imshape[0], self.imshape[1], 3))
       
       
   def filter_class(self, study):
@@ -1193,7 +1195,6 @@ def main(args):
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
         argsfile = os.path.join(main_pth, 'test_set.csv')
-        #argsfile = os.path.join(main_pth, 'BE_set.csv')
         REDO = False
     else:
         # running from the CLI using bash script

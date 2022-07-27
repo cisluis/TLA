@@ -9,7 +9,7 @@ Help()
    echo "#####################################################################"
    echo "# Tumor Landscape Analysis (TLA)                                    #"
    echo "#                                                                   #"
-   echo "# Syntax: TLA [-g|h|v] action study [redo]                          #"
+   echo "# Syntax: TLA [-h|v|l] action study [redo]                          #"
    echo "#  options:                                                         #"
    echo "#   -h     print this help                                          #"
    echo "#   -v     print TLA modules versions                               #"
@@ -23,7 +23,7 @@ Help()
    echo "#           'clean' clean study folder of all analysis results      #"
    echo "#   study:  name of study set to process, corresponding with a file #"
    echo "#           <study_name.csv> with arguments for the analysis        #"
-   echo "#   redo:  optional argument, if 'TRUE' is used then re-analyze     #"
+   echo "#   redo:   optional argument, if 'TRUE' is used then re-analyze    #"
    echo "#           all data. 'FALSE' (default) use cached data.            #"
    echo "#                                                                   #"
    echo "#####################################################################"
@@ -50,7 +50,7 @@ Versions()
    echo
 }
 
-while getopts ":h:v:l" option; do
+while getopts ":hvl" option; do
    case $option in
       h) # display Help
          Help
