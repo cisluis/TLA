@@ -1,15 +1,17 @@
 '''
-    TLA setup:
-    #################
+    TLA setup single sample:
+    ########################
 
-        This script reads lines from a study set table
-        Each line has parameters of a particular study
-        Then (raw) data for each study is read and extreme values calculated
+        This script reads parameters from a study set table (only 1st line)
+        Then (raw) data for one sample, given by a specified case number,
+        is read and extreme values calculated. 
         Cell classes are checked and new, curated, coordinate file are produced
         along with a croped version of the IHC image and a raster arrays
-        for each sample (at hoc region mask, a mask that defines the ROI, and
-                         a multilevel raster array with kde cell density info).
-        A sample data summary and general stats are also produced.
+        (at hoc region mask, a mask that defines the ROI, and a multilevel 
+         raster array with kde cell density info).
+        
+        A sample data summary and general stats are also produced, but 
+        aggregated statistics should be calculated afterwards. 
 
         This process prepares and formats data for TLA
 '''
@@ -28,11 +30,9 @@ from skimage import io
 from PIL import Image
 from argparse import ArgumentParser
 
-from myfunctions import printProgressBar
-
 Image.MAX_IMAGE_PIXELS = 600000000
 
-__version__  = "1.0.0"
+__version__  = "1.0.1"
 
 
 # %% Private classes
@@ -114,25 +114,26 @@ class Study:
       
       self.samples_out = self.samples_out.astype({'num_cells': int})
       self.samples_out = self.samples_out.astype(self.samples.dtypes)
-      self.samples_out.to_csv(os.path.join(self.dat_path, 
-                                           self.name + '_samples.csv'),
-                              index=False)
-      self.allstats_out.to_csv(os.path.join(self.dat_path, 
-                                            'results',
-                                            self.name + '_samples_stats.csv'),
-                               index=False)
-      self.allpops_out.to_csv(os.path.join(self.dat_path,
-                                           'results',
-                                           self.name + '_quadrat_stats.csv'), 
-                              index=False)
       
-      # plots distributions of quadrat stats
-      self.classes = quadFigs(self.allpops_out, self.classes,
-                              os.path.join(self.dat_path,
-                                           self.name + '_quadrat_stats.png'))
-      self.classes.to_csv(os.path.join(self.dat_path, 
-                                       self.name + '_classes.csv'), 
-                          index=False)
+      f = os.path.join(self.dat_path, self.name + '_samples.csv')
+      if not os.path.exists(f):
+          self.samples_out.to_csv(f, index=False, header=True)
+      else:    
+          self.samples_out.to_csv(f, mode='a', index=False, header=False)
+      
+      f = os.path.join(self.dat_path, 'results', 
+                       self.name + '_samples_stats.csv')
+      if not os.path.exists(f):
+          self.allstats_out.to_csv(f, index=False, header=True)
+      else:
+          self.allstats_out.to_csv(f, mode='a', index=False, header=False)
+      
+      f = os.path.join(self.dat_path, 'results', 
+                       self.name + '_quadrat_stats.csv')
+      if not os.path.exists(f):
+          self.allpops_out.to_csv(f, index=False, header=True)
+      else:
+          self.allpops_out.to_csv(f, mode='a', index=False, header=False)
       
       
 class Sample:
@@ -942,11 +943,6 @@ class Sample:
       
 # %% Private Functions
     
-def progressBar(i, n, step, Nsteps,  msg, msg_i):
-    
-    printProgressBar(Nsteps*i + step, Nsteps*n,
-                     suffix=msg + ' ; ' + msg_i, length=50)
-
 def xyShift(data, shape, ref, scale):
     """
     Shifts coordinates and transforms into physical units
@@ -1022,7 +1018,7 @@ def getCellSize(cell_arr, r):
     # the typical area of a cell
     # (given by maximun number of cells in any circle)
     acell = 0
-    if ( N > 0):
+    if ( np.max(N) > 0):
         acell = np.sum(circ)/np.max(N)
 
     # returns radius of a typical cell
@@ -1204,130 +1200,73 @@ def main(args):
     """
 
     # %% debug start
-    debug = False
-
-    if debug:
-        # running from the IDE
-        # path of directory containing this script
-        main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'test_set.csv')
-        REDO = False
-    else:
-        # running from the CLI using bash script
-        # path of directory containing this script
-        main_pth = os.getcwd()
-        argsfile = os.path.join(main_pth, args.argsfile)
-        REDO = args.redo
+    
+    main_pth = os.getcwd()
+    argsfile = os.path.join(main_pth, args.argsfile) 
 
     print("==> The working directory is: " + main_pth)
     
     if not os.path.exists(argsfile):
         print("ERROR: The specified argument file does not exist!")
         sys.exit()
-    args_tbl = pd.read_csv(argsfile)
-
-    # Loops over all studies in the study set
-    # *** There is typically just one study in the a set, but this allows for
-    #     running a set of analyses in a single call
-    for k, stu in args_tbl.iterrows():
         
-        # loads arguments for this study
-        study = Study(stu, main_pth)
+    # only the first study in the argument table will be used
+    study = Study( pd.read_csv(argsfile).iloc[0], main_pth)
+    
+    # read number of cases for this study set
+    numsamples = len(study.samples.index)
+    
+    # %% STEP 1: creates data directories and new sample table
+    # creates sample object and data folders for pre-processed data
+    sample = Sample(study.samples.iloc[args.casenum - 1], study)
+    
+    print("====> Case [" + str(args.casenum) + "/" + str(numsamples) + "]" + \
+          " :: SID = " + sample.sid )
+    
+    # %% if pre-processing files do not exist
+    if  args.redo or ((not os.path.exists(sample.cell_data_file)) or
+                (not os.path.exists(sample.classes_file)) or
+                (not os.path.exists(sample.raster_file))):
+
+        # STEP 2: loads and format coordinate data
+        sample.setup_data(sample.supbw)
+
+        # STEP 3: Filter cells according to density filters
+        sample.filter_class(study)
         
-        if debug:
-            study.samples = study.samples.iloc[:1]
+        # STEP 4: calculate a ROI mask for region with cells
+        sample.roi_mask()
+        
+        # STEP 5: create raster images from density KDE profiles
+        sample.kde_mask()
+        
+        # STEP 6: create raster images from cell mixing profiles
+        sample.abumix_mask()
             
-        numsamples = len(study.samples.index)
+        # STEP 7: saves main data files
+        sample.save_data()
 
-        print("==> Processing study: " + study.name +
-              "; [{0}/{1}]".format(k + 1, len(args_tbl.index)))
+    else:
+        # STEP 8: if sample is already pre-processed read data
+        sample.load_data()
 
-        # number of processing steps
-        Nsteps = 11
-
-        # %% loops over samples in this study
-        for index, samp in study.samples.iterrows():
-
-            sid = samp.sample_ID
-
-            # creates a message to display in progress bar
-            msg = '==> ' + sid + "; [{0}/{1}]".format(index + 1, numsamples)
-
-            # %% STEP 1: creates data directories and new sample table
-            progressBar(index, numsamples, 1, Nsteps, msg, 
-                        'checking data folders...')
+    # %% STEP 9: calculates quadrat populations for coarse graining 
+    # MUST run these first because they modify sample.tbl
+    # qstats = sample.quadrat_stats(study.binsiz, study.subbinsiz)
+    qstats = sample.local_stats()
+    mstats = sample.gen_stats()
+    
+    # %% STEP 10: plots landscape data
+    sample.plot_landscape_scatter()
+    sample.plot_landscape_props()
+    sample.plot_class_landscape_props()
             
-            # creates sample object and data folders for pre-processed data
-            sample = Sample(samp, study)
-            
-            # %% if pre-processing files do not exist
-            if REDO or ((not os.path.exists(sample.cell_data_file)) or
-                        (not os.path.exists(sample.classes_file)) or
-                        (not os.path.exists(sample.raster_file))):
+    # %% LAST step: saves study results
+    
+    # ads stats to study table
+    study.add_sample(sample.tbl, mstats, qstats)
+    study.output()
 
-                # STEP 2: loads and format coordinate data
-                progressBar(index, numsamples, 2, Nsteps, msg, 
-                            'loading data...')
-                sample.setup_data(sample.supbw)
-
-                # STEP 3: Filter cells according to density filters
-                progressBar(index, numsamples, 3, Nsteps, msg, 
-                            'filtering data...')
-                sample.filter_class(study)
-                
-                # STEP 4: calculate a ROI mask for region with cells
-                progressBar(index, numsamples, 4, Nsteps, msg, 
-                            'creating ROI mask...')
-                sample.roi_mask()
-                
-                # STEP 5: create raster images from density KDE profiles
-                progressBar(index, numsamples, 5, Nsteps, msg, 
-                            'creating KDE raster...')
-                sample.kde_mask()
-
-                # STEP 6: create raster images from cell mixing profiles
-                progressBar(index, numsamples, 6, Nsteps, msg, 
-                            'creating Abundance-Mix raster...')
-                sample.abumix_mask()
-                
-                # STEP 7: saves main data files
-                progressBar(index, numsamples, 7, Nsteps, msg, 
-                            'saving data for this sample...')
-                sample.save_data()
-
-            else:
-                # STEP 8: if sample is already pre-processed read data
-                progressBar(index, numsamples, 8, Nsteps, msg, 
-                           'loading data...')
-                sample.load_data()
-
-
-            # %% STEP 9: calculates quadrat populations for coarse graining
-            progressBar(index, numsamples, 9, Nsteps, msg, 
-                       'calculating stats...')
-            
-            # MUST run these first because they modify sample.tbl
-            # qstats = sample.quadrat_stats(study.binsiz, study.subbinsiz)
-            qstats = sample.local_stats()
-            mstats = sample.gen_stats()
-            
-            # ads stats to study table
-            study.add_sample(sample.tbl, mstats, qstats)
-
-            
-            # %% STEP 10: plots landscape data
-            progressBar(index, numsamples, 10, Nsteps, msg, 
-                       'ploting landscape props...')
-            sample.plot_landscape_scatter()
-            sample.plot_landscape_props()
-            sample.plot_class_landscape_props()
-            
-        # %% saves study results
-        progressBar(index, numsamples, Nsteps, Nsteps, msg, 
-                   'saving summary tables...')
-        study.output()
-
-    print("\n ==> Pre-processing finished!")
     # %% the end
     return(0)
 
@@ -1336,9 +1275,9 @@ def main(args):
 if __name__ == "__main__":
 
     # Create the parser
-    my_parser = ArgumentParser(prog="tla_setup",
-                               description="### Pre-processing module for " +
-                               "Tumor Landscape Analysis ###",
+    my_parser = ArgumentParser(prog="tla_setup_step",
+                               description="### Pre-processing-step module " + 
+                               "for Tumor Landscape Analysis ###",
                                allow_abbrev=False)
 
     # Add the arguments
@@ -1350,6 +1289,11 @@ if __name__ == "__main__":
                            metavar="argsfile",
                            type=str,
                            help="Argument table file (.csv) for study set")
+    
+    my_parser.add_argument('casenum',
+                           metavar="casenum",
+                           type=int,
+                           help="Set case number to be processed")
 
     my_parser.add_argument("--redo",
                            default=False,
