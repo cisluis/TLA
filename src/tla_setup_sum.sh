@@ -16,7 +16,8 @@ module purge
 module load anaconda/py3
 source activate tlaenv
 
-SRC=$( dirname "$0")
+# path of source directory
+SRC=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # summarize study statistics 
-python {$SRC}tla_setup_sum.py ${STUDY}
+python ${SRC}"/tla_setup_sum.py" ${STUDY}

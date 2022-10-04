@@ -261,7 +261,7 @@ def main(args):
 
     """
     # %% debug starts
-    debug = True
+    debug = False
 
     if debug:
         # running from the IDE

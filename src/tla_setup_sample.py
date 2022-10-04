@@ -259,7 +259,6 @@ class Sample:
       
       from skimage import io
       
-      
       # saves main data files
       self.cell_data.to_csv(self.cell_data_file, index=False)
       self.classes.to_csv(self.classes_file, index=False)
@@ -276,6 +275,11 @@ class Sample:
                           coloc=self.coloc,
                           nndist=self.nndist,
                           rhfunc=self.rhfunc)
+      
+      self.qstats.to_csv(os.path.join(self.res_pth, 
+                                      self.sid + '_quadrat_stats.csv'),
+                         index=False, header=True)
+      
       
   def load_data(self):
       
@@ -296,6 +300,12 @@ class Sample:
       self.coloc = aux['coloc']
       self.nndist = aux['nndist']
       self.rhfunc = aux['rhfunc']
+      
+      f = os.path.join(self.res_pth, self.sid + '_quadrat_stats.csv')
+      if not os.path.exists(f):
+          print("ERROR: samples table file " + f + " does not exist!")
+          sys.exit()
+      self.qstats = pd.read_csv(f)
       
       self.imshape = [self.roiarr.shape[0], self.roiarr.shape[1]]
       
@@ -319,11 +329,6 @@ class Sample:
                                        self.sid + '_samples_stats.csv'), 
                           index=False, header=True)
       
-      self.qstats.to_csv(os.path.join(self.res_pth, 
-                                      self.sid + '_quadrat_stats.csv'),
-                         index=False, header=True)
-       
-  
   def filter_class(self, study):
       """
       Applies a class filter
@@ -1164,47 +1169,47 @@ def main(args):
         
         print( msg + " >>> pre-processing..." )
        
-        # %% STEP 2: loads and format coordinate data
+        # STEP 2: loads and format coordinate data
         sample.setup_data(sample.supbw)
 
-        # %% STEP 3: Filter cells according to density filters
+        # STEP 3: Filter cells according to density filters
         sample.filter_class(study)
         
-        # %% STEP 4: calculate a ROI mask for region with cells
+        # STEP 4: calculate a ROI mask for region with cells
         sample.roi_mask()
         
-        # %% STEP 5: create raster images from density KDE profiles
+        # STEP 5: create raster images from density KDE profiles
         sample.kde_mask()
         
-        # %% STEP 6: create raster images from cell mixing profiles
+        # STEP 6: create raster images from cell mixing profiles
         sample.abumix_mask()
         
-        # %% STEP 7: calculates quadrat populations for coarse graining
+        # STEP 7: calculates quadrat populations for coarse graining
         sample.quadrat_stats()
         
-        # %% STEP 8: calculate global spacial statistics
+        # STEP 8: calculate global spacial statistics
         sample.space_stats(study.dat_path)
-           
-        # %% STEP 9: saves main data files
+      
+        # STEP 9: saves main data files
         sample.save_data()
 
     else:
         
         print(msg + " >>> loading data..." )
             
-        # %% STEP 10: if sample is already pre-processed read data
+        # STEP 10: if sample is already pre-processed read data
         sample.load_data()
-
-    # %% STEP 11: calculates quadrat populations for coarse graining 
+    
+    # %% STEP 11: calculates general stats
     sample.general_stats()
     
-    # %% STEP 12: plots landscape data
+    # STEP 12: plots landscape data
     if GRPH:
         sample.plot_landscape_scatter()
         sample.plot_landscape_props()
         sample.plot_class_landscape_props()
             
-    # %% LAST step: saves study stats results for sample 
+    # LAST step: saves study stats results for sample 
     sample.output(study)
 
     # %% the end

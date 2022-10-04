@@ -10,7 +10,6 @@ import numpy as np
 import scipy.stats as sts
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-
 from KDEpy import FFTKDE
 from scipy.signal import fftconvolve
 

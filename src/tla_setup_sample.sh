@@ -15,11 +15,12 @@ module purge
 module load anaconda/py3
 source activate tlaenv
 
-SRC=$( dirname "$0")
+# path of source directory
+SRC=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 # index of sample in the sample table
 I=$(($SLURM_ARRAY_TASK_ID - 1))
 
 # run all setup steps in job array
-python {$SRC}tla_setup_sample.py ${STUDY} $I ${GRAPH} ${REDO}
+python ${SRC}"/tla_setup_sample.py" ${STUDY} $I ${GRAPH} ${REDO}
 
