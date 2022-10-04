@@ -101,7 +101,7 @@ Measures the enrichment of nearest neighbors between pairs of cell type classes,
 </div>
 For each ref cell the distance to closest ref cell _d<sub>min</sub>(r)_ and the distance to the closest test cell _d<sub>min</sub>(t)_ are found and averaged in each region _(x,y)_, then the index is given by the ratio:
 
-$$N_{rt}(x,y) = \log_{10} \left(\frac{\langle d_{\text{min}}(t)\rangle_{(x,y)}}{\langle d_{\text{min}}(r)\rangle_{(x,y)} } \right)$$
+$$N_{rt}(x,y) = \log \left(\frac{\langle d_{\text{min}}(t)\rangle_{(x,y)}}{\langle d_{\text{min}}(r)\rangle_{(x,y)} } \right)$$
 
 This measure has the properties:
 
@@ -238,140 +238,57 @@ Two novel aspects are of significance in TLA:
 2. The quadrat approach inherently reduces the resolution of the landscape, as any feature with a length scale smaller than the size of a quadrat can't be resolved. But adopting the principle of spatial smoothing from image processing, using spatial convolution functions with a circular or gaussian kernel instead of a quadrat grid, all statistics are calculated at the pixel level. 
 
 
-### TLA CLI script
+### TLA script
 
 Bash script `TLA` is part of the TLA repository and is all what is really needed to run all the analyses. 
 
-There are three basic TLA modules and five possible actions: 
+There are three basic TLA modules (or actions): 
 
-1. `TLA setup` pre-processes data, including cell filtering, creation of raster arrays and estimation of study-level profiles for cell density and mixing, which are used to define local microenvironment categories (LME) that are consistent across the whole cohort, and general spatial statistics evaluated over the entire slide.
-2. `TLA run` runs the main TLA analysis, including calculation of spacial statistic local factors and patch analysis using defined LMEs. Patch, class and landscape level statistics are performed.
+1. `TLA setup` pre-processes data, including cell filtering, creation of raster arrays and estimation of study-level profiles for cell density and mixing, which are used to define local microenvironment categories (LME) that are consistent across the whole cohort.
+2. `TLA run` runs the main TLA analysis, including calculation of spacial statistic factors and patch analysis using defined LMEs. Patch, class and landscape level statistics are performed and recorded in output tables.
 3. `TLA ssh` runs spatial stratified heterogeneity analysis using previously calculated spatial statistic factors. 
-4. `TLA all` runs all modules sequentially. This is likely lengthy but a way to launch the entire analysis pipeline with a single command.  
-5. `TLA clean` deletes study folder with all analysis "from scratch" (only use if you are certain calculations need to be redone)
 
-Since cohort-level analyses depend of details of the study design (eg. cohorts or groups of progression and controls) which specify the type of desired comparisons and statistics, it is left out of this distribution of TLA. Specific projects would typically have tailored post-processing scripts written in `R` for this purpose. 
+Since cohort-level analysis depends of details of the study design (eg. cohorts or groups of progression and controls) which specify the type of desired comparisons and statistics, it is left out of this distribution of TLA. Specific projects would typically have  tailored post-processing scripts written in R for this purpose. 
+
 
 Usage: 
 
-Each module is ran with the syntax: 
+If the virtual environment is not yet activated:
 
 ```
-> ./TLA [-s][-g][-r] {action} {argument table} 
-
+> conda activate
 ``` 
 
-where the optional switches (`FALSE` if not used) are the `slurm` mode, which used `sbatch` to run analysis in a SLURM array; the `graph` mode, which graphs all detailed plots (recommended only for inspection of individual cases in _post hoc_ analysis); and the `redo` mode, which re-do all convolution calculations from scratch, but otherwise it uses cached data for faster runtime (in case a subset of samples is wanted)
+then, each module is ran with the syntax: 
+
+```
+> ./TLA {action} {argument table} [TRUE/FALSE]
+
+``` 
 
 #### Direct use from python
 
-TLA scripts can be run directly from python, this is a simple option when the bash script doesn't work (eg from a Windows system or if you want to re-run the analysis for a specific sample). In these cases use the option `--graph` if you want to plot all graphs for each sample,  `--redo` if you want to redo the analysis. The two __required__ arguments `{argument table}` and `{case}` indicate the name of the study `csv` file and the sample case to analyze (given as the zero-based index of the sample of interest in the corresponding samples table) 
+TLA scripts can be run directly from python, this is a simple option when the bash script doesn't work (eg from a Windows system). In these cases use the option `--redo` if you want to redo the analysis (ie. redo set to `TRUE`).
 
-##### To run `TLA setup` module
-
-* For a single sample with index `{case}` use the following instruction: 
+1. To run `TLA setup` use the following instructions:
 
 ```
-> python src/tla_setup_sample.py {argument table} {case} [--graph] [--redo]
+> python source/tla_setup.py {argument table} [--redo]
 ```
 
-* The setup-summary script will consolidate and summarize statistics across samples __after__ they have been pre-processed.
+2. To run `TLA run` use the following instructions:
 
 ```
-> python src/tla_setup_sum.py {argument table}
-```
-__NOTE:__ this script require a pre-processed samples tables `{sample ID}_samples.csv` and stats tables generated by the setup sample module. These tables are merged together into single study tables. 
-
-* __For pre-processing the whole study__, it is recommended to use the script:
-
-```
-> src/tla_setup_mod.sh {argument table} [--graph] [--redo]
+> python source/tla.py {argument table} [--redo]
 ```
 
-which will run all the samples in a loop and then the summary. This is the serialized form of the TLA pipeline, and equivalent to running the script `TLA setup [-s][-g][-r] {argument table}`
-
-##### To run `TLA run` module
-
-* For a sample `{case}` use: 
+1. To run `TLA ssh` use the following instructions:
 
 ```
-> python src/tla_sample.py {argument table} {case} [--graph] [--redo]
+> python source/tla_ssh.py {argument table} [--redo]
 ```
 
-* The summary script will consolidate and summarize statistics across the whole cohort study __after__ all samples have been processed in TLA.
-
-```
-> python src/tla_sum.py {argument table}
-``` 
-
-* __For processing the whole study__, it is recommended to use the script:
-
-```
-> src/tla_mod.sh {argument table}
-```
-
-which will run all the samples in a loop and then the summary (with default optional arguments). 
-This is a serialized form of the TLA pipeline, totally equivalent to running the script `TLA run {argument table}`. 
-
-
-##### To run `TLA shh` module
-
-1. For a single sample `{case}`, use the following instruction: 
-
-```
-> python scripts/tla_shh_sample.py {argument table} {case} [--graph] [--redo]
-```
-
-__For processing the whole study__, it is recommended to use the script:
-
-```
-> src/tla_ssh_mod.sh {argument table}
-```
-
-which will run all the samples in a loop and then the summary (with default optional arguments). 
-This is a serialized form of the TLA pipeline, totally equivalent to running the script `TLA ssh {argument table}`. 
-
-### SLURM mode
-
-If running TLA in a SLURM cluster, use the `-s` switch. The script will launch and slurm array to run different samples in parallel when possible in the pipeline. In this case the script is run from the login node and it will request multiple nodes with `sbatch` scripting functionality.  
-
-```
-> ./TLA -s [-g][-r] {action} {argument table}
-
-``` 
-
-#### Direct use for SLURM
-
-To directly use the `sbatch` scripts in a SLURM environment follow:
-
-##### To run `TLA setup` module
-
-1. To run the setup module for all samples in the study in a SLURM array: 
-
-```
-> src/tla_setup_mod_sbatch.sh {argument table} [--graph] [--redo]
-```
-This runs the script `tla_setup_sample.sh` in a SLURM array for all samples and then runs `tla_setup_sum.sh` when they are all done. These two scripts setup and launch SBATCH instances to run the corresponding python scripts.
-
-##### To run `TLA run` module
-
-1. To run the analysis module for all samples in the study in a SLURM array: 
-
-```
-> src/tla_mod_sbatch.sh {argument table} [--graph] [--redo]
-```
-This runs the script `tla_sample.sh` in a SLURM array for all samples and then runs `tla_sum.sh` when they are all done. These two scripts setup and launch SBATCH instances to run the corresponding python scripts.
-
-##### To run `TLA ssh` module
-
-1. To run the SSH analysis module for all samples in the study in a SLURM array: 
-
-```
-> src/tla_ssh_mod_sbatch.sh {argument table} [--graph] [--redo]
-```
-This runs the script `tla_ssh_sample.sh` in a SLURM array for all samples, launching SBATCH instances to run the corresponding python script.
-
-### The argument table
+#### Argument table
 
 This is a comma separated file (CSV) containing the main arguments for all TLA modules, and it must be produced by the user. The example `test_set.csv` is provided as a template. 
 

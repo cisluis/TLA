@@ -1,0 +1,152 @@
+#!/bin/bash
+
+##############################################################################
+# Help                                                                       #
+##############################################################################
+Help()
+{
+   # Display Help
+   echo "#####################################################################"
+   echo "# Tumor Landscape Analysis (TLA)                                    #"
+   echo "#                                                                   #"
+   echo "# Syntax: TLA [-h|v|l] action study [redo]                          #"
+   echo "#  options:                                                         #"
+   echo "#   -h     print this help                                          #"
+   echo "#   -v     print TLA modules versions                               #"
+   echo "#   -l     print license statement                                  #"
+   echo "#                                                                   #"
+   echo "#  arguments:                                                       #"
+   echo "#   action: 'setup' for pre-processing data                         #"
+   echo "#           'run' for TLA analysis                                  #"
+   echo "#           'ssh' for SSH post-analysis                             #"
+   echo "#           'all' for ALL TLA analyses                              #"
+   echo "#           'clean' clean study folder of all analysis results      #"
+   echo "#   study:  name of study set to process, corresponding with a file #"
+   echo "#           <study_name.csv> with arguments for the analysis        #"
+   echo "#   redo:   optional argument, if 'TRUE' is used then re-analyze    #"
+   echo "#           all data. 'FALSE' (default) use cached data.            #"
+   echo "#                                                                   #"
+   echo "#####################################################################"
+   echo "# Copyright (C) 2022, Luis Cisneros <lhcisner@asu.edu>              #"
+   echo "#                     Arizona Cancer Evolution Center               #"
+   echo "#                     Arizona State University. Tempe               #"
+   echo "#                                                                   #"
+   echo "# This software is free; you can redistribute it and/or modify it   #"
+   echo "# it under the terms of the GNU General Public License as published #"
+   echo "# in the URL: https://www.gnu.org/licenses/gpl-3.0.en.html          #"
+   echo "#                                                                   #"
+   echo "#####################################################################"
+   echo
+}
+
+Versions()
+{
+   echo "#####################################################################"
+   echo " Tumor Landscape Analysis (TLA)  - Module versions:                  "
+   python source/tla_setup.py -v 
+   python source/tla.py -v 
+   python source/tla_ssh.py -v 
+   echo "#####################################################################"
+   echo
+}
+
+while getopts ":hvl" option; do
+   case $option in
+      h) # display Help
+         Help
+         exit;;
+      v) # display versions
+         Versions
+         exit;;
+      l) # display license
+         less LICENSE
+         exit;;
+   esac
+done
+
+
+##############################################################################
+# Program call                                                               #
+##############################################################################
+
+ARG1=${1:-''}
+ARG2=${2:-'test_set.csv'}
+ARG3=${3:-''}
+
+case $ARG3 in
+
+   TRUE) # redo option
+         redo="--redo"
+         ;;
+
+   FALSE | "" ) # use cache
+       redo=''
+       ;;
+
+   *) # unknown value
+      echo -n "... ERROR: 'redo' option must be 'TRUE', 'FALSE' or empty"
+      echo
+      Help
+      exit;;
+
+esac
+
+
+case $ARG1 in
+
+   setup) # run pre-processing module
+          python source/tla_setup.py $ARG2 $redo
+          exit;;
+
+   run) # run TLA module
+        python source/tla.py $ARG2 $redo
+        exit;;
+
+   ssh) # run SSH module
+        python source/tla_ssh.py $ARG2 $redo
+        exit;;
+        
+   all) # run all modules
+        python source/tla_setup.py $ARG2 $redo
+        python source/tla.py $ARG2 $redo
+        python source/tla_ssh.py $ARG2 $redo
+        exit;;
+	
+   clean) # delete results
+          echo "Are you sure you wish to clean cache for studies in <$ARG2>?"
+          select yn in "Yes" "No"; do
+             case $yn in
+                Yes ) {
+                       read    
+                       while IFS=, read -r nam rph sam cls pth res
+                          do
+                          echo "... cleaning data for study <$nam>"
+                          datadir=${pth}
+                          echo $datadir
+                          rm -rf $datadir
+                       done
+                      } < $ARG2; 
+                      exit;;
+                      
+                No ) echo "... nothing done"
+                     exit;;
+             esac
+          done
+          exit;;
+	
+   *) # unknown action
+      echo -n "... ERROR: Action <<$ARG1>> is not recognized"
+      echo
+      Help
+      exit;;
+
+esac
+
+
+
+
+
+
+
+
+
