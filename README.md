@@ -9,15 +9,15 @@ __TLA__ is a python program that compiles a large set of spatial statistics, imp
 
 ## Getting started
 
-The best way to run TLA is using the Anaconda python distribution. A virtual environment containing all the required dependencies can be built using the environmental file `tlaenv.yml` included in this repository. 
+__TLA__ runs in the Anaconda python distribution. A virtual environment containing all the required dependencies can be built using the environmental file `tlaenv.yml` included in this repository. 
 
-Please follow these instructions:
+To get started please follow these instructions:
 
-1. Install Anaconda:
-[Anaconda Distribution](https://docs.anaconda.com/anaconda/install/index.html)
-2. Clone (or download) this repository in a dedicated workspace folder in your computer.
-3. Use the command line terminal to run the following instructions (you can also use the Anaconda Navigator app if you prefer a GUI)
-3. Create virtual environment __tlaenv__ from the YML file `tlaenv.yml`. __This is the preferred method__.
+* First
+[Install Anaconda](https://docs.anaconda.com/anaconda/install/index.html)
+* Clone (or download) the __TLA__ repository in a dedicated workspace folder in your computer.
+* Use the command line terminal to run the following instructions (you can also use the Anaconda Navigator app if you prefer to use a GUI)
+* Create a virtual environment named __tlaenv__ from the YML file `tlaenv.yml` (__This is the preferred method__, additional info [here](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)).
 
 ```
 > conda update conda
@@ -25,11 +25,9 @@ Please follow these instructions:
 > conda activate tlaenv
 > conda update --all -y
 
-```
+``` 
 
-Additional info: [Anaconda - managing environments](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html)
-
-Optionally, to build a virtual environment for TLA step by step (including the Spyder 5.3.0 IDE) follow:
+* Alternativelly, to build a virtual environment for TLA step by step (including the Spyder 5.3.0 IDE) use these commands:
 
 ```
 > conda update conda
@@ -43,40 +41,50 @@ Optionally, to build a virtual environment for TLA step by step (including the S
 > conda env export > tlaenv.yml
 
 ```
-But this is not necessary unless you want to change something, as all these steps are encapsulated in the `tlaenv.yml` file.
+__But this is not necessary__ unless you want to change or customize something, as all these steps are encapsulated in the `tlaenv.yml` file.
 
 
-## Workspace structure
+## Workspace Structure
 
-With the current build of TLA (v1.0.0), the most convenient way to work is to create a workspace folder where the TLA source code and the data to be analyzed live together. Future builds will be packaged in a way that TLA can be installed locally and run from any data folder.
+With the current build of TLA (v1.1.0), the most convenient way to work is to create a workspace folder where the TLA source code and the data to be analyzed live together. Future builds will be packaged in a way that TLA can be installed locally and run from any data folder.
 
 The following elements must coexist in the same workspace folder:
 
-* `source/` folder containing all the TLA python source 
+* `src/` folder containing all the TLA python source code and bash scripts
 * `TLA` is a bash script that makes the operation of the different modules of the pipeline much more convenient. 
 * `test-set.csv` is an example of an argument table required to run an analysis. This table contains all the information required for the operation of TLA pipeline. 
-* `test_set.zip` is a zip file containing example data folder:  data (aka 'raw data'), samples table (with information for each sample) and classes table 9with general about the cell types in the study). Please decompress after downloading to local workspace.
+* `test_set.zip` is a zip file containing example data folder:  data (aka 'raw data'), samples table (with information for each sample) and classes table with general about the cell types in the study). Please decompress after downloading to your local workspace.
 
+## TLA Pipeline wrappers usage
 
-## TLA script
+### TLA CLI script
 
-Bash script `TLA` is part of the TLA repository and is all what is really needed to run all modules. 
+The `TLA` wrapper bash script is part of the TLA repository and is all what is really needed to run all modules. You run it in a command line terminal from your TLA workspace, where the `TLA` script, the source `src/` folder and data folder should be located. 
 
-When you are ready to run TLA, from the command line terminal, make sure you change directories to the TLA workspace (where the `TLA` script, the `source/` folder and data are located) and activate the TLA virtual environment:  
-
-```
-> cd {.../workspace}
-> conda activate tlaenv
-
-```
-Here `{.../workspace}` represents the particular location of your workspace. Now, for help using this script use the following instruction:
+For help using this script use the following instruction:
 
 ```
 > TLA -h
 ```
 
-Please read the [TLA documentation](documentation/TLA_doc.md) for more details on the expected format for data files and general usage of the pipeline.
+### TLA sbatch script
 
+For running TLA in a SLURM array you can use the `TLA_SLURM` wrapper. This script will setup an array of nodes and run different samples simultaneously and then consolidate the cohort summaries. If you have access to a HPC cluster this is a better and faster way to run the TLA pipeline. 
+
+Copy the workspace folder in your login node. The virtual environment `tlaenv` needs to be previously installed in your account running the following command (after first initiating an interactive compute session):
+
+```
+> interactive
+> conda env create -f tlaenv.yml
+```
+
+Then when running TLA using `TLA_SLURM`, `sbatch` functions will request  cluster arrays and run parallel jobs for different sample analyses. The syntax is the same as for the CLI `TLA` wrapper by use of the `--slurm` flag option. The following instruction will show help in the usage: 
+
+```
+> TLA -h
+```
+
+__NOTE:__ Please read the [TLA documentation](documentation/TLA_doc.md) for more details on the expected format for data files and general usage of the pipeline.
 
 ## For PC users
 
