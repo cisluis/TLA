@@ -75,7 +75,7 @@ class Study:
             
             # SID for display
             sid = sample.sample_ID
-            res_pth = os.path.join(self.dat_path, 'results', 'samples', sid) 
+            res_pth = os.path.join(self.dat_pth, 'results', 'samples', sid) 
             sfs_pth = os.path.join(res_pth, 'space_factors')
             
             f = os.path.join(res_pth, sid + '_lme_tbl.csv')
@@ -87,47 +87,47 @@ class Study:
                                        ignore_index=True)
             
             # colocalization features
-            f = os.path.join(sfs_pth, self.sid +'_coloc_stats.csv')
+            f = os.path.join(sfs_pth, sid +'_coloc_stats.csv')
             if os.path.exists(f):
                 self.coloc_stats = pd.concat([self.coloc_stats, 
                                               pd.read_csv(f)],
                                              ignore_index=True)
                 
             # NN distance features
-            f = os.path.join(sfs_pth, self.sid +'_nndist_stats.csv')
+            f = os.path.join(sfs_pth, sid +'_nndist_stats.csv')
             if os.path.exists(f):
                 self.nndist_stats = pd.concat([self.nndist_stats, 
                                                pd.read_csv(f)],
                                               ignore_index=True)
                 
             # Ripley's H features
-            f = os.path.join(sfs_pth, self.sid +'_rhfunc_stats.csv')
+            f = os.path.join(sfs_pth, sid +'_rhfunc_stats.csv')
             if os.path.exists(f):
                 self.rhfunc_stats = pd.concat([self.rhfunc_stats, 
                                                pd.read_csv(f)],
                                               ignore_index=True)
                 
             # Getis-Ord features 
-            f = os.path.join(sfs_pth, self.sid +'_georG_stats.csv')
+            f = os.path.join(sfs_pth, sid +'_georG_stats.csv')
             if os.path.exists(f):
                 self.gordG_stats = pd.concat([self.gordG_stats, 
                                               pd.read_csv(f)],
                                              ignore_index=True)
             
       # saves study tables
-      f = os.path.join(self.dat_path, self.name + '_lme_tbl.csv')      
+      f = os.path.join(self.dat_pth, self.name + '_lme_tbl.csv')      
       self.lme_stats.to_csv(f, index=False, header=True)      
             
-      f = os.path.join(self.dat_path, self.name + '_coloc_tbl.csv')      
+      f = os.path.join(self.dat_pth, self.name + '_coloc_tbl.csv')      
       self.coloc_stats.to_csv(f, index=False, header=True)  
       
-      f = os.path.join(self.dat_path, self.name + '_nndist_tbl.csv')      
+      f = os.path.join(self.dat_pth, self.name + '_nndist_tbl.csv')      
       self.nndist_stats.to_csv(f, index=False, header=True)  
       
-      f = os.path.join(self.dat_path, self.name + '_rhfunc_tbl.csv')      
+      f = os.path.join(self.dat_pth, self.name + '_rhfunc_tbl.csv')      
       self.rhfunc_stats.to_csv(f, index=False, header=True)  
       
-      f = os.path.join(self.dat_path, self.name + '_georG_tbl.csv')      
+      f = os.path.join(self.dat_pth, self.name + '_georG_tbl.csv')      
       self.gordG_stats.to_csv(f, index=False, header=True)  
           
 # %% Private Functions

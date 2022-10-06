@@ -361,8 +361,9 @@ class Landscape:
                           K = ripleys_K_array(rcx, 
                                               n[:, :, xi], N[:, :, xi], 
                                               circ)
-                          
+                      
                       K[self.roiarr == 0] = np.nan    
+                      K[K == 0] = np.nan    
                       # Old definition:
                       # H = (np.sqrt(K/np.pi) - self.subkernel)/self.subkernel
                       # New definition, should be easier to interpret
@@ -1209,7 +1210,7 @@ def getLandscapeMetrics(ls):
 def getSampleStats(sample, ls, adj_pairs, class_metrics, landscape_metrics):
     
     # gather sample statistics
-    sample_out = sample['sample_ID'].copy()
+    sample_out = sample.copy()
     
     npairs = np.sum(adj_pairs['total'].values)
     npairs_eq = 0
@@ -1217,7 +1218,7 @@ def getSampleStats(sample, ls, adj_pairs, class_metrics, landscape_metrics):
         npairs_eq += (adj_pairs['total']*adj_pairs[c]).tolist()[i]
      
     idx = np.logical_or(sample_out.index.str.endswith('_file'),
-                        sample_out.index.str.endswith('_dir'))
+                         sample_out.index.str.endswith('_dir'))
     sample_out = sample_out.drop(sample.index[idx].tolist())
     sample_out['num_lmes'] = len(ls.classes)
     sample_out['landscape_area'] = ls.landscape_area
@@ -2014,7 +2015,8 @@ def main(args):
                                  [-1, 1], GRPH)
         land.plotRHFuncLandscape(fact_pth, study.analyses, 
                                  [-1, 1], GRPH)
-        land.plotGOrdLandscape(fact_pth, study.analyses, GRPH)
+        land.plotGOrdLandscape(fact_pth, study.analyses, 
+                               [-3, 3], GRPH)
         land.plotFactorCorrelations(fact_pth, study.analyses, GRPH)
         
         # %% Saves table results (for faster re-runs)

@@ -123,7 +123,7 @@ case $ARG1 in
              	source $SRC"tla_mod_sbatch.sh" $ARG2 $graph $redo
              	exit;;
            FALSE) # serial run
-           		source $SRC"tla_mod.sh" $ARG2 $graph $redo
+           	source $SRC"tla_mod.sh" $ARG2 $graph $redo
               	exit;;
     	esac
         ;;
@@ -134,7 +134,7 @@ case $ARG1 in
              	source $SRC"tla_ssh_mod_sbatch.sh" $ARG2 $graph $redo
              	exit;;
        	   FALSE) # serial run
-           		source $SRC"tla_shh_mod.sh" $ARG2 $graph $redo
+           	source $SRC"tla_shh_mod.sh" $ARG2 $graph $redo
               	exit;;
     	esac
         ;;    
@@ -143,12 +143,12 @@ case $ARG1 in
     	case $slurm in
 	 
       	   TRUE) # slurm run
-        		source $SRC"tla_setup_mod_sbatch.sh" $ARG2 $graph $redo
+        	source $SRC"tla_setup_mod_sbatch.sh" $ARG2 $graph $redo
             	source $SRC"tla_mod_sbatch.sh" $ARG2 $graph $redo
             	#source $SRC"tla_ssh_mod_sbatch.sh" $ARG2 $graph $redo
              	exit;;
        	   FALSE) # serial run
-           		source $SRC"tla_setup_mod.sh" $ARG2 $graph $redo
+           	source $SRC"tla_setup_mod.sh" $ARG2 $graph $redo
             	source $SRC"tla_mod.sh" $ARG2 $graph $redo
             	#source $SRC"tla_ssh_mod.sh" $ARG2 $graph $redo
             	exit;;

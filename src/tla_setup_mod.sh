@@ -1,6 +1,5 @@
 #!/bin/bash
 
-SRC=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 IFS=','
 
 # get samples_file name and determine number of samples to be processed
@@ -16,8 +15,8 @@ conda activate tlaenv
 # run all samples in study
 for (( I=0; I<$ncases; I++ ))
 do
-	python ${SRC}"/tla_setup_sample.py" $1 $I $2 $3
+	python src/tla_setup_sample.py $1 $I $2 $3
 done
 
 # run the setup summary
-python ${SRC}"/tla_setup_sum.py" $1
+python src/tla_setup_sum.py $1

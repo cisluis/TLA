@@ -1,6 +1,5 @@
 #!/bin/bash
 
-SRC=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 IFS=','
 
 # get samples_file name and determine number of samples to be processed
@@ -16,6 +15,6 @@ conda activate tlaenv
 # run all samples in study
 for (( I=0; I<$ncases; I++ ))
 do
-	python ${SRC}"/tla_ssh_sample.py" $1 $I $2 $3
+	python src/tla_ssh_sample.py $1 $I $2 $3
 done
 
