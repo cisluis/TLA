@@ -441,9 +441,12 @@ class Sample:
               [z, _] = kdeMask(aux, self.imshape, self.bw)
               kdearr[:, :, i] = z
 
-      classes['fraction_of_total'] = \
-          classes['number_of_cells'] / len(self.cell_data)
-      
+      if (self.num_cells > 0):
+          classes['fraction_of_total'] = classes['number_of_cells'] / \
+              self.num_cells
+      else:
+          classes['fraction_of_total'] = np.nan
+          
       self.kdearr = kdearr
       self.classes = classes
       

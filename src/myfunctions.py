@@ -245,18 +245,22 @@ def kdeMask(data, shape, bw):
 
     """
 
-    # Compute the kernel density estimate and levels
-    [r, c, z, mask, levs, th] = kdeLevels(data, shape, bw)
- 
-    if (np.sum(mask) > 0):
-        # get number of cells in background region (~zero-density)
-        # and renormalizes z (to cells per unit pixel)
-        bg = np.sum(z[mask == 0])/np.sum(mask)
-        z = z + bg
-        z[mask == 0] = 0
-        z = len(data)*(z/np.sum(z))
+    if (len(data) > 0):
+        # Compute the kernel density estimate and levels
+        [r, c, z, mask, levs, th] = kdeLevels(data, shape, bw)
+     
+        if (np.sum(mask) > 0):
+            # get number of cells in background region (~zero-density)
+            # and renormalizes z (to cells per unit pixel)
+            bg = np.sum(z[mask == 0])/np.sum(mask)
+            z = z + bg
+            z[mask == 0] = 0
+            z = len(data)*(z/np.sum(z))
+        else:
+            z[mask == 0] = 0
     else:
-        z[mask == 0] = 0
+        z = np.zeros(shape)
+        mask = np.zeros(shape)
 
     return(z, mask)
 
