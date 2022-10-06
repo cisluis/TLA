@@ -123,7 +123,7 @@ class Sample:
       self.scale = study.scale
       self.units = study.units
       
-      # other sample attributes (to be filled later)
+      # other sample attributes (to be filled later)    
       self.cell_data = pd.DataFrame() # dataframe of cell data (coordinates)
       self.imshape = []               # shape of accepted image
       self.img = []                   # image array
@@ -167,13 +167,17 @@ class Sample:
       else:
           self.raw_mkfile = os.path.join(study.raw_path, self.tbl.mask_file)
           self.tbl['mask_file'] = 'rasters/' + self.sid + '_mask.npz'
-          self.mkfile = os.path.join(f, self.sid + '_mask.npz')    
+      self.mkfile = os.path.join(f, self.sid + '_mask.npz')    
       self.tbl['raster_file'] = 'rasters/' + self.sid + '_raster.npz'
       self.raster_file = os.path.join(f, self.sid + '_raster.npz')
       
       # classes info file
       self.classes_file = os.path.join(self.res_pth, 
                                        self.sid + '_classes.csv')
+      
+      # total number of cells (after filtering)
+      self.num_cells = 0        
+      
       # cell size attribute
       self.rcell = np.nan
       
@@ -265,6 +269,7 @@ class Sample:
       
       if (self.imfile != ''):
           io.imsave(self.imfile, self.img, check_contrast=False)
+          
       np.savez_compressed(self.mkfile, mask=self.msk )
           
       np.savez_compressed(self.raster_file,
@@ -406,6 +411,9 @@ class Sample:
       [_, self.roiarr] = kdeMask(self.cell_data, self.imshape, self.bw)
       # filter out cells outside of ROI
       self.cell_data = filterCells(self.cell_data, self.roiarr)
+      
+      # total number of cells (after filtering) 
+      self.num_cells = self.cell_data 
       
       
   def kde_mask(self):
@@ -572,7 +580,10 @@ class Sample:
       rcs = [(r, c) for r in redges for c in cedges]
 
       # dataframe for population abundances
-      pop = pd.DataFrame()
+      pop = pd.DataFrame({'sample_ID': [],
+                          'row': [],
+                          'col': [],
+                          'total': []})
       for rc in rcs:
           if self.roiarr[rc] > 0:
               n = np.nansum(self.abuarr[rc[0], rc[1], :])
@@ -652,63 +663,72 @@ class Sample:
         for i, clsx in self.classes.iterrows():
             # coordinates of cells in class x
             aux = data.loc[data['class'] == clsx['class']]
-            X[aux.row, aux.col, i] = 1
-            
-            for k, r in enumerate(rs):
-                n[:, :, i, k] = np.abs(np.rint(fftconvolve(X[:, :, i],
-                                                           circle(r), 
-                                                           mode='same')))
+            if (len(aux) > 0):
+                X[aux.row, aux.col, i] = 1
+                for k, r in enumerate(rs):
+                    n[:, :, i, k] = np.abs(np.rint(fftconvolve(X[:, :, i],
+                                                               circle(r), 
+                                                               mode='same')))
         
         # loop thru all combinations of classes (pair-wise comparisons)
         for i, clsx in self.classes.iterrows():
             
             # coordinates of cells in class x
             aux = data.loc[data['class'] == clsx['class']]
-            rcx = np.array(aux[['row', 'col']])
             
-            # Ripleys H score (identity)
-            for k, r in enumerate(rs):
-                rk = ripleys_K(rcx, n[:, :, i, k])
-                rk = (np.sqrt(rk/np.pi) - r)/r
-                rhfuncarr[i, i, k, 1] = rk
-            nam = 'H_' + clsx['class'] + '_' + clsx['class']
-            rhfuncdf[nam] = rhfuncarr[i, i, :, 1] 
-
-            # Colocalization index
-            colocarr[i, i] = 1.0
-
-            # Nearest Neighbor Distance index (identity)
-            nndistarr[i, i] = 0.0
+            if (len(aux) > 0):
             
-            for j, clsy in self.classes.iterrows():
-
-                # coordinates of cells in class y
-                aux = data.loc[data['class'] == clsy['class']]
-                rcy = np.array(aux[['row', 'col']])
-
-                if (i != j):
-                    # Ripleys H score (bivarite)
-                    for k, r in enumerate(rs):
-                        rk = ripleys_K_biv(rcx, n[:, :, i, k], 
-                                           rcy, n[:, :, j, k])
-                        rk = (np.sqrt(rk/np.pi) - r)/r
-                        rhfuncarr[i, j, k, 1] = rk
-                    nam = 'H_' + clsx['class'] + '_' + clsy['class']
-                    rhfuncdf[nam] = rhfuncarr[i, j, :, 1] 
-
-                    # Nearest Neighbor Distance index
-                    nndistarr[i, j] = nndist(rcx, rcy)
-            
-                if (i > j):
-                    # MH index from quadrats sampling
-                    aux = self.qstats[[clsx['class'], 
-                                       clsy['class']]].copy().dropna()
-                    aux['x'] =  aux[clsx['class']]/aux[clsx['class']].sum()
-                    aux['y'] =  aux[clsy['class']]/aux[clsy['class']].sum()
-                    M = 2 * (aux['x']*aux['y']).sum()/ \
-                        ((aux['x']*aux['x']).sum() + (aux['y']*aux['y']).sum())
-                    colocarr[i, j]= M
-                    colocarr[j, i]= M
+                rcx = np.array(aux[['row', 'col']])    
+                # Ripleys H score (identity)
+                for k, r in enumerate(rs):
+                    rk = ripleys_K(rcx, n[:, :, i, k])
+                    rk = (np.sqrt(rk/np.pi) - r)/r
+                    rhfuncarr[i, i, k, 1] = rk
+                nam = 'H_' + clsx['class'] + '_' + clsx['class']
+                rhfuncdf[nam] = rhfuncarr[i, i, :, 1] 
+    
+                # Colocalization index
+                colocarr[i, i] = 1.0
+    
+                # Nearest Neighbor Distance index (identity)
+                nndistarr[i, i] = 0.0
+                
+                for j, clsy in self.classes.iterrows():
+    
+                    # coordinates of cells in class y
+                    aux = data.loc[data['class'] == clsy['class']]
+                    
+                    if (len(aux) > 0):
+                    
+                        rcy = np.array(aux[['row', 'col']])
+        
+                        if (i != j):
+                            
+                            # Ripleys H score (bivarite)
+                            for k, r in enumerate(rs):
+                                rk = ripleys_K_biv(rcx, n[:, :, i, k], 
+                                                   rcy, n[:, :, j, k])
+                                rk = (np.sqrt(rk/np.pi) - r)/r
+                                rhfuncarr[i, j, k, 1] = rk
+                            nam = 'H_' + clsx['class'] + '_' + clsy['class']
+                            rhfuncdf[nam] = rhfuncarr[i, j, :, 1] 
+        
+                            # Nearest Neighbor Distance index
+                            nndistarr[i, j] = nndist(rcx, rcy)
+                    
+                        if (i > j):
+                            # MH index from quadrats sampling
+                            aux = self.qstats[[clsx['class'], 
+                                               clsy['class']]].copy().dropna()
+                            aux['x'] =  aux[clsx['class']]/ \
+                                aux[clsx['class']].sum()
+                            aux['y'] =  aux[clsy['class']]/ \
+                                aux[clsy['class']].sum()
+                            M = 2 * (aux['x']*aux['y']).sum()/ \
+                                ((aux['x']*aux['x']).sum() + \
+                                 (aux['y']*aux['y']).sum())
+                            colocarr[i, j]= M
+                            colocarr[j, i]= M
 
         self.coloc = colocarr
         self.nndist = nndistarr
@@ -742,12 +762,17 @@ class Sample:
       stats = self.tbl[['sample_ID', 'num_cells']]
       stats['total_area'] = self.imshape[0]*self.imshape[1]
       stats['ROI_area'] = A
+      
       for i, row in self.classes.iterrows():
           c = row['class']
           n = row['number_of_cells']
           stats[c + '_num_cells'] = n
-          stats[c + '_den_cells'] = n/A
-      
+          
+          if (A>0):
+              stats[c + '_den_cells'] = n/A
+          else:
+              stats[c + '_den_cells'] = np.nan
+            
       # records overal Morisita-Horn index at pixel level
       comps = list(combinations(self.classes.index.values.tolist(), 2))
       for comp in comps:   
@@ -769,6 +794,13 @@ class Sample:
           cb = self.classes.iloc[comp[1]]['class']
           stats['RHFunc_' + ca + '_' + cb] = self.rhfunc[comp[0], 
                                                           comp[1], 0, 1]
+      
+      if ( A > 0 ):
+          tot_dens = N/A
+          tot_dens_units = N/roi_area
+      else:
+          tot_dens = np.nan
+          tot_dens_units = np.nan
           
       # Save a reference to the standard output
       original_stdout = sys.stdout
@@ -782,8 +814,9 @@ class Sample:
                      round(self.imshape[0]*self.scale, 2)]))
           print('(*) ROI area [pix]^2: ' + str(A) + '; ' +
                 self.units + "^2: " + str(roi_area))
-          print('(*) Total cell density 1/[pix]^2: ' + str(round(N/A, 4)) +
-                '; 1/' + self.units + "^2: " + str(round(N/A, 4)))
+          print('(*) Total cell density 1/[pix]^2: ' + 
+                str(round(tot_dens, 4)) + '; 1/' + self.units + "^2: " + 
+                str(round(tot_dens_units, 4)))
           print('(*) Composition: ' + str(N) +
                 ' cells (uniquely identified, not overlaping):')
           print(self.classes[['class', 'class_name', 'number_of_cells',
@@ -1131,7 +1164,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
+        argsfile = os.path.join(main_pth, 'BE_set_1_local.csv')
         REDO = False
         GRPH = False
         CASE = 0
@@ -1204,7 +1237,7 @@ def main(args):
     sample.general_stats()
     
     # STEP 12: plots landscape data
-    if GRPH:
+    if (GRPH and sample.num_cells > 0):
         sample.plot_landscape_scatter()
         sample.plot_landscape_props()
         sample.plot_class_landscape_props()

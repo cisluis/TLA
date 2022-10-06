@@ -20,7 +20,7 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pylandstats as pls
-import pickle
+# import pickle
 
 from skimage import io
 from PIL import Image
@@ -1981,7 +1981,7 @@ def main(args):
           "] :: SID <- " + sid 
     
     # output sample data filenames
-    landpkl = os.path.join(sample['res_pth'], sid +'_landscape.pkl')
+    # landpkl = os.path.join(sample['res_pth'], sid +'_landscape.pkl')
     samplcsv = os.path.join(sample['res_pth'], sid +'_lme_tbl.csv')
     
     # if processed landscape do not exist
@@ -2022,9 +2022,9 @@ def main(args):
         # %% Saves table results (for faster re-runs)
         sample_out.to_csv(samplcsv, index=False)
         # pickle results of quadrats analysis (for faster re-runs)
-        with open(landpkl, 'wb') as f:  
-             pickle.dump([land], f)  
-        del land
+        # with open(landpkl, 'wb') as f:  
+        #      pickle.dump([land], f)  
+        # del land
             
     else:
         # %% STEP 6: loads landscape data
