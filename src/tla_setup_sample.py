@@ -413,7 +413,7 @@ class Sample:
       self.cell_data = filterCells(self.cell_data, self.roiarr)
       
       # total number of cells (after filtering) 
-      self.num_cells = self.cell_data 
+      self.num_cells = len(self.cell_data) 
       
       
   def kde_mask(self):
