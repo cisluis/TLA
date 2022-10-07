@@ -275,8 +275,16 @@ class Landscape:
                                  len(gordG_comps)))
               cases_x  = list(set(cases_x) | set(gordG_comps))
           
+          # list classes with non-zero abundance in this sample  
+          valid_cases = self.classes.loc[self.classes['number_of_cells'] > 0, 
+                                         'class'].to_list()
+          
+          cases_x  = list(set(cases_x) & set(valid_cases))
+          cases_y  = list(set(cases_y) & set(valid_cases))
+          
           # reduced list of all class cases
-          cases = list(set(cases_x) | set(cases_y))    
+          cases = list(set(cases_x) | set(cases_y))  
+          
           # indeces of ref and target list cases in overal list
           cases_xi  = [cases.index(c) for c in cases_x]
           cases_yj  = [cases.index(c) for c in cases_y]
@@ -397,7 +405,7 @@ class Landscape:
       medges = self.classes['mixing_edges']
 
       dim = len(self.classes)
-      lmearr = np.zeros(self.imshape)
+      lmearr = np.ones(self.imshape)*np.nan
 
       # vectorized function for faster processing
       def indexvalue(x, edges):
@@ -406,17 +414,19 @@ class Landscape:
       vindexvalue = np.vectorize(indexvalue, excluded=['edges'])
 
       for i, iclass in self.classes.iterrows():
-          # get abundance level
-          aux = self.abuarr[:, :, i]
-          aux[np.isnan(aux)] = 0
-          abu = vindexvalue(x=aux, edges=nedges[i])
-          # get mixing level
-          aux = self.mixarr[:, :, i]
-          aux[np.isnan(aux)] = 0
-          mix = vindexvalue(x=aux, edges=medges[i])
-          # produces a single digital (dim-digit) code
-          j = dim - (i + 1)
-          lmearr = lmearr + (10**(2*j + 1))*abu + (10**(2*j))*mix
+          # if edges are not empty
+          if nedges:
+              # get abundance level
+              aux = self.abuarr[:, :, i]
+              aux[np.isnan(aux)] = 0
+              abu = vindexvalue(x=aux, edges=nedges[i])
+              # get mixing level
+              aux = self.mixarr[:, :, i]
+              aux[np.isnan(aux)] = 0
+              mix = vindexvalue(x=aux, edges=medges[i])
+              # produces a single digital (dim-digit) code
+              j = dim - (i + 1)
+              lmearr = lmearr + (10**(2*j + 1))*abu + (10**(2*j))*mix
 
       # sets out-regions to NAN
       lmearr[self.roiarr == 0] = np.nan
@@ -850,7 +860,11 @@ class Landscape:
                                self.sid +'_factor_correlations.csv'), sep=',')
           
 
-  def landscapeAnalysis(self, sample, lme_pth, do_plots):
+  def landscapeAnalysis(self, sample, samplcsv, do_plots):
+      
+      from myfunctions import mkdirs
+      
+      lme_pth = mkdirs(os.path.join(self.res_pth, 'lmes'))
       
       # sets background to 0 and create a pls object
       aux = self.lmearr.copy()
@@ -894,10 +908,11 @@ class Landscape:
           
       # plot LME landscape
       self.plotLMELandscape(lme_pth)
-
+ 
       # get sample stats
-      return(getSampleStats(sample, self.plsobj, adj_pairs, 
-                            class_metrics, landscape_metrics))
+      sample_out = getSampleStats(sample, self.plsobj, adj_pairs,
+                                  class_metrics, landscape_metrics)
+      sample_out.to_csv(samplcsv, index=False)
   
     
 # %% Private Functions
@@ -2000,14 +2015,7 @@ def main(args):
         # %% STEP 3: calculate kernel-level space stats
         land.getSpaceStats(study.analyses)
         
-        # %% STEP 4: pylandstats analysis
-        # Regular metrics can be computed at the patch, class and
-        # landscape level. For list of all implemented metrics see: 
-        # https://pylandstats.readthedocs.io/en/latest/landscape.html
-        lme_pth = mkdirs(os.path.join(land.res_pth, 'lmes'))
-        sample_out = land.landscapeAnalysis(sample, lme_pth, GRPH)      
-        
-        # %% STEP 5: prints LMEs and kernel stats
+        # %% STEP 4: prints space stats
         fact_pth = mkdirs(os.path.join(land.res_pth, 'space_factors'))
         land.plotColocLandscape(fact_pth, study.analyses, 
                                 [0.0 ,1.0], GRPH)
@@ -2019,16 +2027,23 @@ def main(args):
                                [-3, 3], GRPH)
         land.plotFactorCorrelations(fact_pth, study.analyses, GRPH)
         
-        # %% Saves table results (for faster re-runs)
-        sample_out.to_csv(samplcsv, index=False)
+        # saves a proxy table to flag end of process (in case next step is 
+        # commented and don't want to redo all analysis up to here)
+        sample.to_csv(samplcsv, index=False)
+        
+        # %% STEP 5: pylandstats analysis
+        # Regular metrics can be computed at the patch, class and
+        # landscape level. For list of all implemented metrics see: 
+        # https://pylandstats.readthedocs.io/en/latest/landscape.html
+        land.landscapeAnalysis(sample, samplcsv, GRPH)      
+        
         # pickle results of quadrats analysis (for faster re-runs)
         # with open(landpkl, 'wb') as f:  
         #      pickle.dump([land], f)  
         # del land
             
-    else:
+    # else:
         # %% STEP 6: loads landscape data
-        sample_out = pd.read_csv(samplcsv)
         # with open(landpkl, 'rb') as f:  
         #    [land] = pickle.load(f) 
         
