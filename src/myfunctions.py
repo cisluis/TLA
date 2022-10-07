@@ -591,22 +591,29 @@ def nndist(rcx, rcy):
     """
 
     from scipy.spatial import KDTree
+    
+    v = 0
+    
+    if (len(rcx) > 1):
 
-    # get nearest neighbor distances of ref cells with their own type
-    dnnxx, _ = KDTree(rcx).query(rcx, k=[2])
-    mdnnxx = np.mean(dnnxx)
+        # get nearest neighbor distances of ref cells with their own type
+        dnnxx, _ = KDTree(rcx).query(rcx, k=[2])
+        mdnnxx = np.mean(dnnxx)
     
-    v = np.nan
+        if ((mdnnxx > 0) and (len(rcy) > 0)):
+            
+            # get nearest neighbor distances to test cells
+            dnnxy, _ = KDTree(rcy).query(rcx, k=[1])
     
-    if (mdnnxx > 0):
+            # gets ratio of mean NNDist
+            v = np.mean(dnnxy) / mdnnxx
         
-        # get nearest neighbor distances to test cells
-        dnnxy, _ = KDTree(rcy).query(rcx, k=[1])
+    if (v > 0):
+        nndi = np.log10(v)
+    else:
+        nndi = np.nan
 
-        # gets ratio of mean NNDist
-        v = np.mean(dnnxy) / mdnnxx
-
-    return(np.log10(v))
+    return(nndi)
 
 
 def nndist_array(rcx, rcy, N, kernel):
@@ -632,32 +639,39 @@ def nndist_array(rcx, rcy, N, kernel):
     """
 
     from scipy.spatial import KDTree
+    
+    v = np.zeros(N.shape)
+    
+    if (len(rcx) > 1):
 
-    # get nearest neighbor distances of ref cells with their own type
-    dnnxx, innxx = KDTree(rcx).query(rcx, k=[2])
-    # turns into array form
-    nnarr = np.zeros((N.shape[0], N.shape[1]))
-    nnarr[rcx[:, 0], rcx[:, 1]] = dnnxx[:, 0]
+        # get nearest neighbor distances of ref cells with their own type
+        dnnxx, innxx = KDTree(rcx).query(rcx, k=[2])
+        # turns into array form
+        nnarr = np.zeros((N.shape[0], N.shape[1]))
+        nnarr[rcx[:, 0], rcx[:, 1]] = dnnxx[:, 0]
 
-    # local mean of NNdistance (dividing by local number of ref cells)
-    aux = fftconvolve(nnarr, kernel, mode='same')
-    aux[aux < 0] = 0
-    mdnnxx = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
+        # local mean of NNdistance (dividing by local number of ref cells)
+        aux = fftconvolve(nnarr, kernel, mode='same')
+        aux[aux < 0] = 0
+        mdnnxx = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
+        
+        if (len(rcy) > 0) :
+            
+            # get nearest neighbor distances to test cells
+            dnnxy, innxy = KDTree(rcy).query(rcx, k=[1])
+            # turns to array form
+            nnarr = np.zeros((N.shape[0], N.shape[1]))
+            nnarr[rcx[:, 0], rcx[:, 1]] = dnnxy[:, 0]
 
-    # get nearest neighbor distances to test cells
-    dnnxy, innxy = KDTree(rcy).query(rcx, k=[1])
-    # turns to array form
-    nnarr = np.zeros((N.shape[0], N.shape[1]))
-    nnarr[rcx[:, 0], rcx[:, 1]] = dnnxy[:, 0]
+            # local mean of NNdistance (dividing by local number of ref cells)
+            aux = fftconvolve(nnarr, kernel, mode='same')
+            aux[aux < 0] = 0
+            mdnnxy = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
 
-    # local mean of NNdistance (dividing by local number of ref cells)
-    aux = fftconvolve(nnarr, kernel, mode='same')
-    aux[aux < 0] = 0
-    mdnnxy = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
-
-    # gets (locally) ratio of mean NNDist
-    v = np.divide(mdnnxy, mdnnxx, out=np.zeros(N.shape), where=(mdnnxx > 0))
-    v[v == 0] = np.nan
+            # gets (locally) ratio of mean NNDist
+            v = np.divide(mdnnxy, mdnnxx, out=np.zeros(N.shape), 
+                          where=(mdnnxx > 0))
+            v[v == 0] = np.nan
 
     return(np.log10(v))
 
@@ -678,22 +692,26 @@ def ripleys_K(rc, n):
     - n: 2D array with point abundance at subkernel scale
     """
 
-    Ir = np.zeros((n.shape[0], n.shape[1]))
-    
-    # area of landscape
-    A = np.sum(n>0)
-    
     # Number of points 
     N = len(rc)
-
-    # number of neighbors in kernel around each point
-    Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
-    # number of pair comparisons 
-    npairs = N*(N - 1)/2
-
-    # Ripley's K sum (do sum of Ir for each kernel)
-    ripley = A * np.sum(Ir)/npairs
     
+    ripley = np.nan
+    
+    if (N > 1):
+        
+        # area of landscape
+        A = np.sum(n>0)
+    
+        # number of neighbors in kernel around each point
+        Ir = np.zeros((n.shape[0], n.shape[1]))
+        Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
+        
+        # number of pair comparisons 
+        npairs = N*(N - 1)/2
+        
+        # Ripley's K sum (do sum of Ir for each kernel)
+        ripley = A * np.sum(Ir)/npairs
+          
     return(ripley)
 
 
@@ -715,18 +733,22 @@ def ripleys_K_array(rc, n, N, kernel):
     - kernel: kernel array for deconvolution smoothing
     """
 
-    Ir = np.zeros((N.shape[0], N.shape[1]))
-
-    # number of neighbors (at subkernel scale) around each point
-    Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
-    # number of pair comparisons in each kernel (degenerate)
-    npairs = np.multiply(N, N - 1)/2
-
-    # Ripley's K sum (do sum of Ir for each kernel)
-    aux = np.rint(fftconvolve(Ir, kernel, mode='same'))
-    ripley = np.sum(kernel) * np.divide(aux, npairs,
-                                        out=np.zeros(Ir.shape),
-                                        where=(npairs > 0))
+    ripley = np.ones(N.shape)*np.nan
+    
+    if (len(rc) > 1):
+    
+        # number of neighbors (at subkernel scale) around each point
+        Ir = np.zeros((N.shape[0], N.shape[1]))
+        Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
+        
+        # number of pair comparisons in each kernel (degenerate)
+        npairs = np.multiply(N, N - 1)/2
+    
+        # Ripley's K sum (do sum of Ir for each kernel)
+        aux = np.rint(fftconvolve(Ir, kernel, mode='same'))
+        ripley = np.sum(kernel) * np.divide(aux, npairs,
+                                            out=np.zeros(Ir.shape),
+                                            where=(npairs > 0))     
     return(ripley)
 
 
@@ -752,20 +774,23 @@ def ripleys_K_biv(rcx, nx, rcy, ny):
     - Ny: 2D array with test point abundance at kernel scale
     - kernel: kernel array for deconvolution smoothing
     """
-
-    Ir = np.zeros((nx.shape[0],nx.shape[1]))
     
-    # area of landscape
-    A = np.sum(nx>0)
+    ripley = np.ones(nx.shape)*np.nan
     
-    # number of 'test' neighbors (at subkernel scale) around each 'ref' point
-    Ir[rcx[:, 0], rcx[:, 1]] = ny[rcx[:, 0], rcx[:, 1]]
-    # number of pair comparisons in each kernel (non-degenerate)
-    npairs = len(rcx)*len(rcy)
-
+    if (len(rcx) > 0 and len(rcy) > 0):
+      
+        # area of landscape
+        A = np.sum(nx > 0)
+        
+        # 'test' neighbors (at subkernel scale) around each 'ref' point
+        Ir = np.zeros((nx.shape[0], nx.shape[1]))
+        Ir[rcx[:, 0], rcx[:, 1]] = ny[rcx[:, 0], rcx[:, 1]]
+        
+        # number of pair comparisons in each kernel (non-degenerate)
+        npairs = len(rcx)*len(rcy)
     
-    # Ripley's K sum (do sum of Ir for each kernel)
-    ripley = A * np.sum(Ir)/npairs
+        # Ripley's K sum (do sum of Ir for each kernel)
+        ripley = A * np.sum(Ir)/npairs
     
     return(ripley)
 
@@ -792,19 +817,22 @@ def ripleys_K_array_biv(rcx, nx, Nx, ny, Ny, kernel):
     - Ny: 2D array with test point abundance at kernel scale
     - kernel: kernel array for deconvolution smoothing
     """
+    
+    ripley = np.ones(nx.shape)*np.nan
+    
+    if (len(rcx) > 0):
 
-    Ir = np.zeros((Nx.shape[0], Nx.shape[1]))
+        # 'test' neighbors (at subkernel scale) around each 'ref' point
+        Ir = np.zeros((Nx.shape[0], Nx.shape[1]))
+        Ir[rcx[:, 0], rcx[:, 1]] = ny[rcx[:, 0], rcx[:, 1]]
+        # number of pair comparisons in each kernel (non-degenerate)
+        npairs = np.multiply(Nx, Ny)
 
-    # number of 'test' neighbors (at subkernel scale) around each 'ref' point
-    Ir[rcx[:, 0], rcx[:, 1]] = ny[rcx[:, 0], rcx[:, 1]]
-    # number of pair comparisons in each kernel (non-degenerate)
-    npairs = np.multiply(Nx, Ny)
-
-    # Ripley's K sum (do sum of Ir for each kernel)
-    aux = np.abs(np.rint(fftconvolve(Ir, kernel, mode='same')))
-    ripley = np.sum(kernel) * np.divide(aux, npairs,
-                                        out=np.zeros(Ir.shape),
-                                        where=(npairs > 0))
+        # Ripley's K sum (do sum of Ir for each kernel)
+        aux = np.abs(np.rint(fftconvolve(Ir, kernel, mode='same')))
+        ripley = np.sum(kernel) * np.divide(aux, npairs,
+                                            out=np.zeros(Ir.shape),
+                                            where=(npairs > 0))
     return(ripley)
 
 

@@ -73,7 +73,6 @@ class Study:
       # loops over samples in this study
       for index, sample in self.samples.iterrows():
             
-            # SID for display
             sid = sample.sample_ID
             res_pth = os.path.join(self.dat_pth, 'results', 'samples', sid) 
             sfs_pth = os.path.join(res_pth, 'space_factors')

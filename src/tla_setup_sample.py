@@ -496,9 +496,9 @@ class Sample:
       A = np.sum(kernel)
 
       classes['mean_abundance'] = 0
-      classes['std_abundance'] = 0
+      classes['std_abundance'] = np.nan
       classes['mean_mixing'] = 0
-      classes['std_mixing'] = 0
+      classes['std_mixing'] = np.nan
 
       for i, clss in classes.iterrows():
 
@@ -533,27 +533,18 @@ class Sample:
               # assign raster values
               abuarr[:, :, i] = N
               mixarr[:, :, i] = M
-
-              # get basic stats
-              classes.loc[classes['class'] == clss['class'],
-                          'mean_abundance'] = np.mean(N[msk > 0])
-              classes.loc[classes['class'] == clss['class'],
-                          'std_abundance'] = np.std(N[msk > 0])
-              classes.loc[classes['class'] == clss['class'],
-                          'mean_mixing'] = np.nanmean(M[msk > 0])
-              classes.loc[classes['class'] == clss['class'],
-                          'std_mixing'] = np.nanstd(M[msk > 0])
               
-          else:
-              # basic stats are null if no cells 
-              classes.loc[classes['class'] == clss['class'],
-                          'mean_abundance'] = np.nan
-              classes.loc[classes['class'] == clss['class'],
-                          'std_abundance'] = np.nan
-              classes.loc[classes['class'] == clss['class'],
-                          'mean_mixing'] = np.nan
-              classes.loc[classes['class'] == clss['class'],
-                          'std_mixing'] = np.nan
+              # get basic stats
+              n = np.mean(N[msk > 0])
+              if ( n > 0):
+                  classes.loc[classes['class'] == clss['class'],
+                              'mean_abundance'] = n
+                  classes.loc[classes['class'] == clss['class'],
+                              'std_abundance'] = np.std(N[msk > 0])
+                  classes.loc[classes['class'] == clss['class'],
+                              'mean_mixing'] = np.nanmean(M[msk > 0])
+                  classes.loc[classes['class'] == clss['class'],
+                              'std_mixing'] = np.nanstd(M[msk > 0])
               
       self.abuarr = abuarr
       self.mixarr = mixarr
@@ -727,9 +718,14 @@ class Sample:
                                 aux[clsx['class']].sum()
                             aux['y'] =  aux[clsy['class']]/ \
                                 aux[clsy['class']].sum()
-                            M = 2 * (aux['x']*aux['y']).sum()/ \
-                                ((aux['x']*aux['x']).sum() + \
-                                 (aux['y']*aux['y']).sum())
+                                
+                            xxyy = (aux['x']*aux['x']).sum() + \
+                                (aux['y']*aux['y']).sum()
+                            
+                            if (xxyy > 0):
+                                M = 2 * (aux['x']*aux['y']).sum()/xxyy
+                            else:
+                                M = np.nan
                             colocarr[i, j]= M
                             colocarr[j, i]= M
 

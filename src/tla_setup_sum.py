@@ -81,31 +81,34 @@ class Study:
             
             f = os.path.join(res_pth, sid + '_samples.csv')
             if not os.path.exists(f):
-                print("ERROR: samples table file " + f + " does not exist!")
+                print("ERROR: sample file " + f + " does not exist!")
                 sys.exit()
             aux = pd.read_csv(f)
-            self.samples_out = pd.concat([self.samples_out, aux], 
-                                         ignore_index=True)
-            self.samples_out = self.samples_out.astype({'num_cells': int})
             
-            f = os.path.join(res_pth, sid + '_samples_stats.csv')
-            if not os.path.exists(f):
-                print("ERROR: samples table file " + f + " does not exist!")
-                sys.exit()
-            aux = pd.read_csv(f)
-            self.allstats_out = pd.concat([self.allstats_out, aux],
-                                          ignore_index=True)
+            # if sample has actual data
+            if aux['num_cells'] > 0:
+                # adds sample to study table
+                self.samples_out = pd.concat([self.samples_out, aux], 
+                                             ignore_index=True)
             
-            f = os.path.join(res_pth, sid + '_quadrat_stats.csv')
-            if not os.path.exists(f):
-                print("ERROR: samples table file " + f + " does not exist!")
-                sys.exit()
-            aux = pd.read_csv(f)
-            self.allpops_out = pd.concat([self.allpops_out, aux], 
-                                         ignore_index=True)
+                f = os.path.join(res_pth, sid + '_samples_stats.csv')
+                if not os.path.exists(f):
+                    print("ERROR: stats file " + f + " does not exist!")
+                    sys.exit()
+                aux = pd.read_csv(f)
+                self.allstats_out = pd.concat([self.allstats_out, aux],
+                                              ignore_index=True)
             
+                f = os.path.join(res_pth, sid + '_quadrat_stats.csv')
+                if not os.path.exists(f):
+                    print("ERROR: quadrat file " + f + " does not exist!")
+                    sys.exit()
+                aux = pd.read_csv(f)
+                self.allpops_out = pd.concat([self.allpops_out, aux], 
+                                             ignore_index=True)
             
       # saves study tables
+      self.samples_out = self.samples_out.astype({'num_cells': int})
       f = os.path.join(self.dat_path, self.name + '_samples.csv')      
       self.samples_out.to_csv(f, index=False, header=True)      
             
@@ -215,31 +218,47 @@ def quadFigs(quadrats, classes, pngout):
         aux = pd.DataFrame({'class': [row['class']]})
 
         vals = quadrats[row['class']]
-        qats = np.nanquantile(vals, [0.0, 0.5, 0.87, 1.0]).tolist()
-        # qats = [0.0, np.mean(vals),
-        #         np.mean(vals) + np.std(vals), np.max(vals)]
-        n = quadDist(vals, row['class_name'],
-                     'Cells per quadrat',
-                     [0, np.nanmax(vals)], ax[0, i])
-        if (n > maxfrq[0]):
-            maxfrq[0] = n
+        qats = []
+        
+        if (len(vals) > 0):
+            qats = np.nanquantile(vals, [0.0, 0.5, 0.87, 1.0]).tolist()
+            # qats = [0.0, np.mean(vals),
+            #         np.mean(vals) + np.std(vals), np.max(vals)]
+            
+            n = quadDist(vals, 
+                         row['class_name'],
+                         'Cells per quadrat',
+                         [0, np.nanmax(vals)], 
+                         ax[0, i])
+            if (n > maxfrq[0]):
+                maxfrq[0] = n
+                
+            for xc in qats:
+                ax[0, i].axvline(x=xc,
+                                 color='red', linestyle='dashed', linewidth=1)
+                
         aux['abundance_edges'] = [qats]
-        for xc in qats:
-            ax[0, i].axvline(x=xc,
-                             color='red', linestyle='dashed', linewidth=1)
-
+ 
         vals = quadrats[row['class']+'_MH']
-        qats = [0.0, 0.2, 0.67, 1.0]
-        n = quadDist(vals, row['class_name'],
-                     'Mixing index per quadrat',
-                     [0.0, 1.0], ax[1, i])
-        if (n > maxfrq[1]):
-            maxfrq[1] = n
+        qats = []
+        
+        if (len(vals) > 0):
+            qats = [0.0, 0.2, 0.67, 1.0]
+            n = quadDist(vals, 
+                         row['class_name'],
+                         'Mixing index per quadrat',
+                         [0.0, 1.0], 
+                         ax[1, i])
+            if (n > maxfrq[1]):
+                maxfrq[1] = n
+            
+            for xc in qats:
+                ax[1, i].axvline(x=xc,
+                                 color='red', linestyle='dashed', linewidth=1)
+                
         aux['mixing_edges'] = [qats]
-        for xc in qats:
-            ax[1, i].axvline(x=xc,
-                             color='red', linestyle='dashed', linewidth=1)
-
+    
+        # concat to table
         tme_edges = pd.concat([tme_edges, aux], ignore_index=True)
 
     for i, row in classes.iterrows():
