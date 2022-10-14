@@ -459,6 +459,9 @@ class Sample:
       kdearr = np.zeros((self.imshape[0], self.imshape[1], len(classes)))
       classes['raster_index'] = classes.index
       classes['number_of_cells'] = 0
+      classes['fraction_of_total'] = np.nan
+      
+      aux = []
 
       for i, row in classes.iterrows():
 
@@ -470,20 +473,19 @@ class Sample:
               # do KDE on pixel locations of cells
               [z, _] = kdeMask(aux, self.imshape, self.bw)
               kdearr[:, :, i] = z
+              
+              del z
+          del aux 
 
       if (self.num_cells > 0):
           classes['fraction_of_total'] = classes['number_of_cells'] / \
               self.num_cells
-      else:
-          classes['fraction_of_total'] = np.nan
-          
+        
       self.classes = classes
       
       np.savez_compressed(self.kde_file, kde=kdearr)
       
       # clean memory
-      del z
-      del aux
       gc.collect()
       
       return(kdearr)
@@ -584,7 +586,14 @@ class Sample:
                               'mean_mixing'] = np.nanmean(M[msk > 0])
                   classes.loc[classes['class'] == clss['class'],
                               'std_mixing'] = np.nanstd(M[msk > 0])
-              
+                  
+              del msk
+              del xx
+              del N
+              del M
+        
+          del x
+          
       self.classes = classes
       
       np.savez_compressed(self.abumix_file, 
@@ -592,11 +601,6 @@ class Sample:
                           mix=mixarr)
       
       # clean memory
-      del msk
-      del x
-      del xx
-      del N
-      del M
       gc.collect()
       
       return([abuarr, mixarr])
@@ -735,6 +739,8 @@ class Sample:
                     rk = ripleys_K(rcx, n[:, :, i, k])
                     rk = (np.sqrt(rk/np.pi) - r)/r
                     rhfuncarr[i, i, k, 1] = rk
+                    del rk
+                    
                 nam = 'H_' + clsx['class'] + '_' + clsx['class']
                 rhfuncdf[nam] = rhfuncarr[i, i, :, 1] 
     
@@ -761,6 +767,8 @@ class Sample:
                                                    rcy, n[:, :, j, k])
                                 rk = (np.sqrt(rk/np.pi) - r)/r
                                 rhfuncarr[i, j, k, 1] = rk
+                                del rk
+                                
                             nam = 'H_' + clsx['class'] + '_' + clsy['class']
                             rhfuncdf[nam] = rhfuncarr[i, j, :, 1] 
         
@@ -769,20 +777,27 @@ class Sample:
                     
                         if (i > j):
                             # MH index from quadrats sampling
-                            aux = self.qstats[[clsx['class'], 
-                                               clsy['class']]].copy().dropna()
-                            aux['x'] =  aux[clsx['class']]/ \
-                                aux[clsx['class']].sum()
-                            aux['y'] =  aux[clsy['class']]/ \
-                                aux[clsy['class']].sum()
-                                
-                            xxyy = (aux['x']*aux['x']).sum() + \
-                                (aux['y']*aux['y']).sum()
                             
-                            if (xxyy > 0):
-                                M = 2 * (aux['x']*aux['y']).sum()/xxyy
+                            if ((clsx['class'] in self.qstats.columns) and
+                                (clsy['class'] in self.qstats.columns)):
+                                
+                                aux = self.qstats[[clsx['class'], 
+                                               clsy['class']]].copy().dropna()
+                                aux['x'] =  aux[clsx['class']]/ \
+                                    aux[clsx['class']].sum()
+                                aux['y'] =  aux[clsy['class']]/ \
+                                    aux[clsy['class']].sum()
+                                
+                                xxyy = (aux['x']*aux['x']).sum() + \
+                                    (aux['y']*aux['y']).sum()
+                            
+                                if (xxyy > 0):
+                                    M = 2 * (aux['x']*aux['y']).sum()/xxyy
+                                else:
+                                    M = np.nan
                             else:
                                 M = np.nan
+                                
                             colocarr[i, j]= M
                             colocarr[j, i]= M
 
@@ -797,7 +812,6 @@ class Sample:
         del rhfuncdf
         del X
         del n
-        del rk
         gc.collect()
         
 
@@ -1248,7 +1262,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'CRC_set.csv')
+        argsfile = os.path.join(main_pth, 'BE_set_1.csv')
         REDO = False
         GRPH = False
         CASE = 0
