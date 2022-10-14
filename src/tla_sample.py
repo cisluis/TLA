@@ -241,34 +241,34 @@ class Landscape:
               # combinations of cases:
               coloc_comps = df.loc[df['name'] == 'coloc']['comps'].values[0]
               # Colocalization index (spacial Morisita-Horn score)
-              colocarr = np.empty((self.imshape[0], self.imshape[1], 
-                                   len(coloc_comps)))
+              colocarr = np.full((self.imshape[0], self.imshape[1], 
+                                   len(coloc_comps)), np.nan)
               cases_x  = list(set(cases_x) | set([c[0] for c in coloc_comps]))
               cases_y  = list(set(cases_y) | set([c[1] for c in coloc_comps]))
           if isnndist:
               # combinations of cases:
               nndist_comps = df.loc[df['name'] == 'nndist']['comps'].values[0]
               # Nearest Neighbor Distance index
-              nndistarr = np.empty((self.imshape[0], self.imshape[1], 
-                                    len(nndist_comps)))
+              nndistarr = np.full((self.imshape[0], self.imshape[1], 
+                                    len(nndist_comps)), np.nan)
               cases_x  = list(set(cases_x) | set([c[0] for c in nndist_comps]))
               cases_y  = list(set(cases_y) | set([c[1] for c in nndist_comps]))
           if isrhfunc:
               # combinations of cases:
               rhfunc_comps = df.loc[df['name'] == 'rhfunc']['comps'].values[0]
               # Ripley's H score
-              rhfuncarr = np.empty((self.imshape[0], self.imshape[1], 
-                                    len(rhfunc_comps)))
+              rhfuncarr = np.full((self.imshape[0], self.imshape[1], 
+                                    len(rhfunc_comps)), np.nan)
               cases_x  = list(set(cases_x) | set([c[0] for c in rhfunc_comps]))
               cases_y  = list(set(cases_y) | set([c[1] for c in rhfunc_comps]))
           if isgordG:
               # combinations of cases:
               gordG_comps = df.loc[df['name'] == 'gordG']['comps'].values[0]
               # Gets-Ord statistics (G* and HOT value)
-              geordGarr = np.empty((self.imshape[0], self.imshape[1], 
-                                    len(gordG_comps)))
-              hotarr = np.empty((self.imshape[0], self.imshape[1], 
-                                 len(gordG_comps)))
+              geordGarr = np.full((self.imshape[0], self.imshape[1], 
+                                    len(gordG_comps)), np.nan)
+              hotarr = np.full((self.imshape[0], self.imshape[1], 
+                                 len(gordG_comps)), np.nan)
               cases_x  = list(set(cases_x) | set(gordG_comps))
           
           # list classes with non-zero abundance in this sample  

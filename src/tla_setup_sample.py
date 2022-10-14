@@ -695,10 +695,10 @@ class Sample:
         n = np.zeros((self.imshape[0], self.imshape[1], nc, len(self.rs)))
 
         # Colocalization index
-        colocarr = np.empty((nc, nc))
+        colocarr = np.full((nc, nc), np.nan)
         
         # Nearest Neighbor Distance index
-        nndistarr = np.empty((nc, nc))
+        nndistarr = np.full((nc, nc), np.nan)
         
         # precalculate local abundance for all classes and radii
         # (needs to be precalculated for combination measures)
@@ -718,7 +718,7 @@ class Sample:
                                                                mode='same')))
                     
         # Ripley's H function
-        rhfuncarr = np.empty((nc, nc, len(self.rs), 2))
+        rhfuncarr = np.full((nc, nc, len(self.rs), 2), np.nan)
         rhfuncarr[:, :, 0:len(self.rs), 0]= self.rs
         rhfuncdf = pd.DataFrame({'sample_ID': [str(x) for x in self.rs], 
                                  'r': self.rs})
