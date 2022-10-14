@@ -409,23 +409,26 @@ class Sample:
 
           # subset data to just target cells, gets array of values
           aux = data.loc[data['class'] == hd_code]
-          irc = np.array(aux[['i', 'row', 'col']])
+          
+          if (len(aux) > 0):
+              
+              irc = np.array(aux[['i', 'row', 'col']])
 
-          # do KDE on pixel locations of target cells (e.g. tumor cells)
-          [_, _, z] = KDE(aux, self.imshape, self.bw)
-
-          # generate a binary mask
-          mask = arrayLevelMask(z, denthr, np.pi*(self.bw)*(self.bw))
-
-          # tag masked out cells
-          ii = np.ones(len(data))
-          ii[irc[:, 0]] = mask[irc[:, 1], irc[:, 2]]
-          data['masked'] = (ii < 1)
-
-          # redefine possibly misclasified target cells by means of 
-          # the KDE filter (i.e. those in low density regions)
-          data.loc[data['masked'], 'class'] = ld_code
-          data.drop(columns=['masked', 'i'], inplace=True)
+              # do KDE on pixel locations of target cells (e.g. tumor cells)
+              [_, _, z] = KDE(aux, self.imshape, self.bw)
+    
+              # generate a binary mask
+              mask = arrayLevelMask(z, denthr, np.pi*(self.bw)*(self.bw))
+    
+              # tag masked out cells
+              ii = np.ones(len(data))
+              ii[irc[:, 0]] = mask[irc[:, 1], irc[:, 2]]
+              data['masked'] = (ii < 1)
+    
+              # redefine possibly misclasified target cells by means of 
+              # the KDE filter (i.e. those in low density regions)
+              data.loc[data['masked'], 'class'] = ld_code
+              data.drop(columns=['masked', 'i'], inplace=True)
 
       # drop cells not in the approved class list
       self.cell_data = data.loc[data['class'].isin(self.classes['class'])]
