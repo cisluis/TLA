@@ -245,9 +245,8 @@ class Sample:
       mkfile_exist = os.path.exists(self.raw_mkfile)
       if mkfile_exist:
           msc = io.imread(self.raw_mkfile)
-          imsh = (ims.shape[0]*self.factor,
-                  ims.shape[1]*self.factor,
-                  ims.shape[2])
+          imsh = (msc.shape[0]*self.factor,
+                  msc.shape[1]*self.factor)
           msc = resize(msc, imsh, anti_aliasing=True, preserve_range=True)
           imshape = msc.shape
 
