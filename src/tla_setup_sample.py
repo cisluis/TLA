@@ -22,6 +22,7 @@
 
 import os
 import sys
+import gc
 import math
 import pandas as pd
 import numpy as np
@@ -64,9 +65,17 @@ class Study:
       # bandwidth size for convolutions is half the quadrat size
       self.supbw = int(self.binsiz/2)
       self.bw = int(self.subbinsiz/2)
-
+      
+      # r values for Ripleys' H function
+      dr = int(self.bw/2)
+      self.rs = list(np.arange(dr, (self.supbw)+dr, dr))
+      self.ridx = (np.abs(np.asarray(self.rs) - self.subbinsiz)).argmin()
+      
       # scale parameters
-      self.scale = study['scale']
+      self.factor = 1.0
+      if 'factor' in study:
+          self.factor = study['factor']
+      self.scale = study['scale']*self.factor
       self.units = study['units']
 
       # Filter parameters:
@@ -118,8 +127,13 @@ class Sample:
       # bandwidth size for convolutions is half the quadrat size
       self.supbw = study.supbw
       self.bw = study.bw
+      
+      # r values for Ripleys' H function
+      self.rs = study.rs
+      self.ridx = study.ridx
      
       # scale parameters
+      self.factor = study.factor
       self.scale = study.scale
       self.units = study.units
       
@@ -129,9 +143,8 @@ class Sample:
       self.img = []                   # image array
       self.msk = []                   # mask array (blobs)
       self.roiarr = []                # ROI array
-      self.kdearr = []                # KDE array (smoothed cell density)
-      self.abuarr = []                # abundance array (coarsed)
-      self.mixarr = []                # mixing array (coarsed)
+      
+      # stats
       self.qstats = []                # quadrat statistics table 
       self.mstats = []                # general statistics table 
       
@@ -161,20 +174,28 @@ class Sample:
           self.imfile = os.path.join(f, self.sid + '_img.jpg')
           
       # creates raster folder and add path to df
-      f = mkdirs(os.path.join(study.dat_path, 'rasters'))
+      f = mkdirs(os.path.join(study.dat_path, 'rasters', self.sid))
+      pth = 'rasters/' + self.sid + '/'
       if (self.tbl.mask_file == ''):    
           self.raw_mkfile = ''
+          self.tbl['mask_file']= ''
       else:
           self.raw_mkfile = os.path.join(study.raw_path, self.tbl.mask_file)
-          self.tbl['mask_file'] = 'rasters/' + self.sid + '_mask.npz'
-      self.mkfile = os.path.join(f, self.sid + '_mask.npz')    
-      self.tbl['raster_file'] = 'rasters/' + self.sid + '_raster.npz'
-      self.raster_file = os.path.join(f, self.sid + '_raster.npz')
+          self.tbl['mask_file'] = pth + self.sid +'_mask.npz'
+      self.mask_file = os.path.join(f, self.sid + '_mask.npz')  
+      self.tbl['roi_file'] =  pth + self.sid + '_roi.npz'
+      self.roi_file = os.path.join(f, self.sid + '_roi.npz')
+      self.tbl['kde_file'] = pth +  self.sid + '_kde.npz'
+      self.kde_file = os.path.join(f, self.sid + '_kde.npz')
+      self.tbl['abumix_file'] = pth + self.sid + '_abumix.npz'
+      self.abumix_file = os.path.join(f, self.sid + '_abumix.npz')
+      self.tbl['spafac_file'] = pth + self.sid + '_spafac.npz'
+      self.spafac_file = os.path.join(f, self.sid + '_spafac.npz')
       
       # classes info file
       self.classes_file = os.path.join(self.res_pth, 
                                        self.sid + '_classes.csv')
-      
+    
       # total number of cells (after filtering)
       self.num_cells = 0        
       
@@ -200,10 +221,13 @@ class Sample:
           sys.exit()
       cxy = pd.read_csv(self.raw_cell_data_file)[['class', 'x', 'y']]
       cxy = cxy.loc[cxy['class'].isin(self.classes['class'])]
+      
+      # updates coordinae values by conversion factor
+      cxy.x, cxy.y = np.int32(cxy.x*self.factor), np.int32(cxy.y*self.factor)
 
       # gets extreme pixel values
-      xmin, xmax = int(np.min(cxy.x)), int(np.max(cxy.x))
-      ymin, ymax = int(np.min(cxy.y)), int(np.max(cxy.y))
+      xmin, xmax = np.min(cxy.x), np.max(cxy.x)
+      ymin, ymax = np.min(cxy.y), np.max(cxy.y)
 
       imshape = [np.nan, np.nan]
 
@@ -211,12 +235,20 @@ class Sample:
       imfile_exist = os.path.exists(self.raw_imfile)
       if imfile_exist:
           ims = io.imread(self.raw_imfile)
+          imsh = (ims.shape[0]*self.factor,
+                  ims.shape[1]*self.factor,
+                  ims.shape[2])
+          ims = resize(ims, imsh, anti_aliasing=True, preserve_range=True)
           imshape = ims.shape
 
       # reads mask file (if exists)
       mkfile_exist = os.path.exists(self.raw_mkfile)
       if mkfile_exist:
           msc = io.imread(self.raw_mkfile)
+          imsh = (ims.shape[0]*self.factor,
+                  ims.shape[1]*self.factor,
+                  ims.shape[2])
+          msc = resize(msc, imsh, anti_aliasing=True, preserve_range=True)
           imshape = msc.shape
 
       # check for consistency in image and mask
@@ -258,6 +290,8 @@ class Sample:
       self.img = img
       self.msk = msk_img
       
+      np.savez_compressed(self.mask_file, roi=self.msk)
+      
       
   def save_data(self):
       
@@ -270,13 +304,8 @@ class Sample:
       if (self.imfile != ''):
           io.imsave(self.imfile, self.img, check_contrast=False)
           
-      np.savez_compressed(self.mkfile, mask=self.msk )
-          
-      np.savez_compressed(self.raster_file,
-                          roi=self.roiarr,
-                          kde=self.kdearr,
-                          abu=self.abuarr,
-                          mix=self.mixarr,
+      np.savez_compressed(self.mask_file, mask=self.msk )
+      np.savez_compressed(self.spafac_file, 
                           coloc=self.coloc,
                           nndist=self.nndist,
                           rhfunc=self.rhfunc)
@@ -284,6 +313,7 @@ class Sample:
       self.qstats.to_csv(os.path.join(self.res_pth, 
                                       self.sid + '_quadrat_stats.csv'),
                          index=False, header=True)
+      
       
       
   def load_data(self):
@@ -294,16 +324,15 @@ class Sample:
       self.cell_data = pd.read_csv(self.cell_data_file)
       self.classes = pd.read_csv(self.classes_file)
       
-      aux = np.load(self.mkfile)
+      aux = np.load(self.mask_file)
       self.msk = aux['mask']
       
-      aux = np.load(self.raster_file)
+      aux = np.load(self.roi_file)
       self.roiarr = aux['roi']
-      self.kdearr = aux['kde']
-      self.abuarr = aux['abu']
-      self.mixarr = aux['mix']
+      
+      aux = np.load(self.spafac_file)
       self.coloc = aux['coloc']
-      self.nndist = aux['nndist']
+      self.nndist = aux['nndist'] 
       self.rhfunc = aux['rhfunc']
       
       f = os.path.join(self.res_pth, self.sid + '_quadrat_stats.csv')
@@ -412,6 +441,8 @@ class Sample:
       # filter out cells outside of ROI
       self.cell_data = filterCells(self.cell_data, self.roiarr)
       
+      np.savez_compressed(self.roi_file, roi=self.roiarr)
+      
       # total number of cells (after filtering) 
       self.num_cells = len(self.cell_data) 
       
@@ -426,7 +457,7 @@ class Sample:
       from myfunctions import kdeMask
 
       classes = self.classes.copy()
-      kdearr= np.zeros((self.imshape[0], self.imshape[1], len(classes)))
+      kdearr = np.zeros((self.imshape[0], self.imshape[1], len(classes)))
       classes['raster_index'] = classes.index
       classes['number_of_cells'] = 0
 
@@ -447,11 +478,19 @@ class Sample:
       else:
           classes['fraction_of_total'] = np.nan
           
-      self.kdearr = kdearr
       self.classes = classes
       
+      np.savez_compressed(self.kde_file, kde=kdearr)
+      
+      # clean memory
+      del z
+      del aux
+      gc.collect()
+      
+      return(kdearr)
      
-  def abumix_mask(self):
+     
+  def abumix_mask(self, kdearr):
       """
       Calculates a pixel resolution abundance and mixing score profile for each
       cell type and record it into raster arrays.
@@ -484,10 +523,10 @@ class Sample:
       from myfunctions import circle
 
       classes = self.classes.copy()
-      abuarr = np.full((self.imshape[0], self.imshape[1], 
-                        len(classes)), np.nan)
-      mixarr = np.full((self.imshape[0], self.imshape[1], 
-                        len(classes)), np.nan)
+      abuarr = np.full((self.imshape[0], self.imshape[1], len(classes)), 
+                       np.nan)
+      mixarr = np.full((self.imshape[0], self.imshape[1], len(classes)), 
+                       np.nan)
 
       # produces a (circular) kernel with same size as quadrat
       kernel = circle(self.supbw) # box-circle
@@ -503,7 +542,8 @@ class Sample:
       for i, clss in classes.iterrows():
 
           # smooth (binned) cell location field
-          x = self.kdearr[:, :, i]
+          
+          x = kdearr[:, :, i]
           
           if (np.sum(x) > 0):
 
@@ -546,12 +586,24 @@ class Sample:
                   classes.loc[classes['class'] == clss['class'],
                               'std_mixing'] = np.nanstd(M[msk > 0])
               
-      self.abuarr = abuarr
-      self.mixarr = mixarr
       self.classes = classes
       
+      np.savez_compressed(self.abumix_file, 
+                          abu=abuarr,
+                          mix=mixarr)
+      
+      # clean memory
+      del msk
+      del x
+      del xx
+      del N
+      del M
+      gc.collect()
+      
+      return([abuarr, mixarr])
+      
   
-  def quadrat_stats(self):
+  def quadrat_stats(self, abuarr, mixarr):
       """
       Gets a coarse grained representation of the sample based on quadrat
       estimation of cell abundances. This is, abundance and mixing in a 
@@ -560,7 +612,6 @@ class Sample:
 
       """
 
-      abuarr = self.abuarr.copy()
       abuarr[np.isnan(abuarr)] = 0
 
       # define quadrats (only consider full quadrats)
@@ -580,7 +631,7 @@ class Sample:
                           'total': []})
       for rc in rcs:
           if self.roiarr[rc] > 0:
-              n = np.nansum(self.abuarr[rc[0], rc[1], :])
+              n = np.nansum(abuarr[rc[0], rc[1], :])
               if n > 0:
                   aux = pd.DataFrame({'sample_ID': [self.sid],
                                       'row': [rc[0]],
@@ -588,11 +639,11 @@ class Sample:
                                       'total': [n]})
                   for i, code in enumerate(self.classes['class']):
                       # record abundance of this class
-                      aux[code] = [self.abuarr[rc[0], rc[1], i]]
+                      aux[code] = [abuarr[rc[0], rc[1], i]]
 
                       # record mixing level of this class
                       # (per Morisita-Horn univariate score)
-                      aux[code + '_MH'] = [self.mixarr[rc[0], rc[1], i]]
+                      aux[code + '_MH'] = [mixarr[rc[0], rc[1], i]]
 
                   pop = pd.concat([pop, aux], ignore_index=True)
 
@@ -632,13 +683,10 @@ class Sample:
         
         # number of classes
         nc = len(self.classes)
-        
-        # r values for Ripleys' H function
-        rs = list(np.arange(self.bw/5, self.supbw, self.bw/5))
 
         # raster array of cell abundance in kernels and subkernels
         X = np.zeros((self.imshape[0], self.imshape[1], nc))
-        n = np.zeros((self.imshape[0], self.imshape[1], nc, len(rs)))
+        n = np.zeros((self.imshape[0], self.imshape[1], nc, len(self.rs)))
 
         # Colocalization index
         colocarr = np.empty((nc, nc))
@@ -646,23 +694,33 @@ class Sample:
         # Nearest Neighbor Distance index
         nndistarr = np.empty((nc, nc))
         
-        # Ripley's H function
-        rhfuncarr = np.empty((nc, nc, len(rs), 2))
-        rhfuncarr[:, :, 0:len(rs), 0]= rs
-        rhfuncdf = pd.DataFrame({'sample_ID': [str(x) for x in rs], 'r': rs})
-        rhfuncdf.sample_ID = self.sid
-        
         # precalculate local abundance for all classes and radii
         # (needs to be precalculated for combination measures)
+        cols = {}
         for i, clsx in self.classes.iterrows():
+            for j, clsy in self.classes.iterrows():
+                nam = 'H_' + clsx['class'] + '_' + clsy['class']
+                cols[nam] = np.nan
+                
             # coordinates of cells in class x
             aux = data.loc[data['class'] == clsx['class']]
             if (len(aux) > 0):
                 X[aux.row, aux.col, i] = 1
-                for k, r in enumerate(rs):
+                for k, r in enumerate(self.rs):
                     n[:, :, i, k] = np.abs(np.rint(fftconvolve(X[:, :, i],
                                                                circle(r), 
                                                                mode='same')))
+                    
+        # Ripley's H function
+        rhfuncarr = np.empty((nc, nc, len(self.rs), 2))
+        rhfuncarr[:, :, 0:len(self.rs), 0]= self.rs
+        rhfuncdf = pd.DataFrame({'sample_ID': [str(x) for x in self.rs], 
+                                 'r': self.rs})
+        rhfuncdf.sample_ID = self.sid            
+        rhfuncdf = pd.concat([rhfuncdf, 
+                              pd.DataFrame(cols, index=rhfuncdf.index)], 
+                             axis=1)
+        
         
         # loop thru all combinations of classes (pair-wise comparisons)
         for i, clsx in self.classes.iterrows():
@@ -674,7 +732,7 @@ class Sample:
             
                 rcx = np.array(aux[['row', 'col']])    
                 # Ripleys H score (identity)
-                for k, r in enumerate(rs):
+                for k, r in enumerate(self.rs):
                     rk = ripleys_K(rcx, n[:, :, i, k])
                     rk = (np.sqrt(rk/np.pi) - r)/r
                     rhfuncarr[i, i, k, 1] = rk
@@ -699,7 +757,7 @@ class Sample:
                         if (i != j):
                             
                             # Ripleys H score (bivarite)
-                            for k, r in enumerate(rs):
+                            for k, r in enumerate(self.rs):
                                 rk = ripleys_K_biv(rcx, n[:, :, i, k], 
                                                    rcy, n[:, :, j, k])
                                 rk = (np.sqrt(rk/np.pi) - r)/r
@@ -736,8 +794,14 @@ class Sample:
         f = os.path.join(dat_path, 'results', 'samples', 
                          self.sid, self.sid + '_Ripleys_H_function.csv')
         rhfuncdf.to_csv(f, index=False, header=True)
+        
+        del rhfuncdf
+        del X
+        del n
+        del rk
+        gc.collect()
+        
 
-    
   def general_stats(self):
       """
       Aggregate general statistics for the sample, prints out and outputs 
@@ -754,9 +818,13 @@ class Sample:
       # update sample table
       self.tbl['num_cells'] = N
       self.tbl['shape'] = self.imshape
+      
+      # load kde array
+      aux = np.load(self.kde_file)
+      kdearr = aux['kde']
          
       # estimate typical cell size based of density of points
-      self.rcell = getCellSize(np.sum(self.kdearr, axis=2), self.binsiz)
+      self.rcell = getCellSize(np.sum(kdearr, axis=2), self.binsiz)
       
       stats = self.tbl[['sample_ID', 'num_cells']]
       stats['total_area'] = self.imshape[0]*self.imshape[1]
@@ -791,8 +859,9 @@ class Sample:
       for comp in comps:   
           ca = self.classes.iloc[comp[0]]['class']
           cb = self.classes.iloc[comp[1]]['class']
-          stats['RHFunc_' + ca + '_' + cb] = self.rhfunc[comp[0], 
-                                                          comp[1], 0, 1]
+          stats['RHFunc_' + ca + '_' + cb] = self.rhfunc[comp[0],
+                                                         comp[1],
+                                                         self.ridx, 1]
       
       if ( A > 0 ):
           tot_dens = N/A
@@ -840,6 +909,9 @@ class Sample:
       del f
 
       self.mstats = stats
+      
+      del kdearr
+      gc.collect()
               
       
   def plot_landscape_scatter(self):
@@ -857,12 +929,16 @@ class Sample:
 
       fig, ax = plt.subplots(1, 1, figsize=(12, math.ceil(12/ar)),
                              facecolor='w', edgecolor='k')
+      j = 0
       for i, row in self.classes.iterrows():
           aux = self.cell_data.loc[self.cell_data['class'] == row['class']]
-          landscapeScatter(ax, aux.x, aux.y, row.class_color, row.class_name,
-                           self.units, xedges, yedges, 
-                           spoint=2*self.rcell, fontsiz=18)
-      if (i % 2) != 0:
+          if (len(aux) > 0):
+              landscapeScatter(ax, aux.x, aux.y, 
+                               row.class_color, row.class_name,
+                               self.units, xedges, yedges, 
+                               spoint=2*self.rcell, fontsiz=18)
+              j = j + 1
+      if (j % 2) != 0:
           ax.grid(which='major', linestyle='--', 
                   linewidth='0.3', color='black')
       ax.set_title('Sample ID: ' + str(self.sid), fontsize=20, y=1.02)
@@ -882,10 +958,11 @@ class Sample:
                              facecolor='w', edgecolor='k')
       for i, row in self.classes.iterrows():
           aux = self.cell_data.loc[self.cell_data['class'] == row['class']]
-          landscapeScatter(ax[i], aux.x, aux.y, 
-                           row.class_color, row.class_name,
-                           self.units, xedges, yedges, 
-                           spoint=2*self.rcell, fontsiz=18)
+          if (len(aux) > 0):
+              landscapeScatter(ax[i], aux.x, aux.y, 
+                               row.class_color, row.class_name,
+                               self.units, xedges, yedges, 
+                               spoint=2*self.rcell, fontsiz=18)
           ax[i].set_title(row.class_name, fontsize=18, y=1.02)
       plt.suptitle('Sample ID: ' + str(self.sid), fontsize=24, y=1.001)
       plt.tight_layout()
@@ -930,7 +1007,7 @@ class Sample:
           ax[0, 0].set_title('Histology image', fontsize=18, y=1.02)
 
           # plots sample image
-          if (self.mkfile !=''):
+          if (self.mask_file !=''):
               plotRGB(ax[0, 1], 255*(self.msk > 0), self.units,
                       cedges, redges, xedges, yedges, fontsiz=18, cmap='gray')
           ax[0, 1].set_title('Mask image', fontsize=18, y=1.02)
@@ -976,18 +1053,23 @@ class Sample:
       [ar, redges, cedges, xedges, yedges] = plotEdges(self.imshape, 
                                                        self.binsiz, 
                                                        self.scale)
+      
+      aux = np.load(self.abumix_file)
+      abuarr = aux['abu']
+      mixarr = aux['mix']
+      
       import warnings
       with warnings.catch_warnings():
           warnings.simplefilter('ignore')
 
           n = len(self.classes)
-          vmin = np.floor(np.log10(np.quantile(self.abuarr[self.abuarr > 0], 
+          vmin = np.floor(np.log10(np.quantile(abuarr[abuarr > 0], 
                                                0.25)))
-          vmax = np.ceil(np.log10(np.quantile(self.abuarr[self.abuarr > 0], 
+          vmax = np.ceil(np.log10(np.quantile(abuarr[abuarr > 0], 
                                               0.75)))
 
-          mixmin = np.floor(np.quantile(self.mixarr[self.mixarr > 0], 0.05))
-          #mixmax = np.ceil(np.quantile(self.mixarr[self.mixarr > 0], 0.95))
+          mixmin = np.floor(np.quantile(mixarr[mixarr > 0], 0.05))
+          #mixmax = np.ceil(np.quantile(mixarr[mixarr > 0], 0.95))
           mixmax = 1.0
 
           fig, ax = plt.subplots(n, 2,
@@ -999,13 +1081,13 @@ class Sample:
 
               name = row['class_name']
 
-              aux = self.abuarr[:, :, i].copy()
+              aux = abuarr[:, :, i].copy()
               msk = (aux == 0)
               aux[msk] = 0.00000001
               abuim = np.log10(aux)
               abuim[msk] = np.nan
 
-              mixim = self.mixarr[:, :, i].copy()
+              mixim = mixarr[:, :, i].copy()
               mixim[mixim == 0] = np.nan
 
               # plots kde image
@@ -1031,6 +1113,10 @@ class Sample:
                                    self.sid + '_abu_mix_landscape.png'),
                       bbox_inches='tight', dpi=300)
           plt.close()
+          
+          del abuarr
+          del mixarr
+          gc.collect()
 
 
       
@@ -1163,7 +1249,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'BE_set_1_local.csv')
+        argsfile = os.path.join(main_pth, 'CRC_set.csv')
         REDO = False
         GRPH = False
         CASE = 0
@@ -1211,20 +1297,25 @@ def main(args):
         sample.roi_mask()
         
         # STEP 5: create raster images from density KDE profiles
-        sample.kde_mask()
+        kdearr = sample.kde_mask()
         
         # STEP 6: create raster images from cell mixing profiles
-        sample.abumix_mask()
+        abuarr, mixarr = sample.abumix_mask(kdearr)
+        del kdearr
+        gc.collect()
         
         # STEP 7: calculates quadrat populations for coarse graining
-        sample.quadrat_stats()
+        sample.quadrat_stats(abuarr, mixarr)
+        del abuarr
+        del mixarr
+        gc.collect()
         
         # STEP 8: calculate global spacial statistics
         sample.space_stats(study.dat_path)
-      
+        
         # STEP 9: saves main data files
         sample.save_data()
-
+      
     else:
         
         print(msg + " >>> loading data..." )

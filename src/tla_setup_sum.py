@@ -81,31 +81,34 @@ class Study:
             
             f = os.path.join(res_pth, sid + '_samples.csv')
             if not os.path.exists(f):
-                print("ERROR: sample file " + f + " does not exist!")
-                sys.exit()
-            aux = pd.read_csv(f)
-            
-            # if sample has actual data
-            if aux['num_cells'] > 0:
-                # adds sample to study table
-                self.samples_out = pd.concat([self.samples_out, aux], 
-                                             ignore_index=True)
-            
-                f = os.path.join(res_pth, sid + '_samples_stats.csv')
-                if not os.path.exists(f):
-                    print("ERROR: stats file " + f + " does not exist!")
-                    sys.exit()
+                print("WARNING: sample: " + sid + " was droped from TLA!")
+            else:        
+                # read table for this sample
                 aux = pd.read_csv(f)
-                self.allstats_out = pd.concat([self.allstats_out, aux],
-                                              ignore_index=True)
-            
-                f = os.path.join(res_pth, sid + '_quadrat_stats.csv')
-                if not os.path.exists(f):
-                    print("ERROR: quadrat file " + f + " does not exist!")
-                    sys.exit()
-                aux = pd.read_csv(f)
-                self.allpops_out = pd.concat([self.allpops_out, aux], 
-                                             ignore_index=True)
+                
+                # if sample has actual data
+                if (aux['num_cells'].values[0] > 0):
+                    # adds sample to study table
+                    self.samples_out = pd.concat([self.samples_out, aux], 
+                                                 ignore_index=True)
+                
+                    f = os.path.join(res_pth, sid + '_samples_stats.csv')
+                    if not os.path.exists(f):
+                        print("ERROR: stats file " + f + " does not exist!")
+                        sys.exit()
+                    aux = pd.read_csv(f)
+                    self.allstats_out = pd.concat([self.allstats_out, aux],
+                                                  ignore_index=True)
+                
+                    f = os.path.join(res_pth, sid + '_quadrat_stats.csv')
+                    if not os.path.exists(f):
+                        print("ERROR: quadrat file " + f + " does not exist!")
+                        sys.exit()
+                    aux = pd.read_csv(f)
+                    self.allpops_out = pd.concat([self.allpops_out, aux], 
+                                                 ignore_index=True)
+                else:
+                    print("WARNING: sample: " + sid + " was droped from TLA!")
             
       # saves study tables
       self.samples_out = self.samples_out.astype({'num_cells': int})
@@ -286,7 +289,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
+        argsfile = os.path.join(main_pth, 'CRC_set.csv')
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)

@@ -12,6 +12,7 @@
 
 # %% Imports
 import os
+import gc
 import sys
 import math
 
@@ -100,6 +101,8 @@ class Landscape:
     
   def __init__(self, sample, study):
       
+      from myfunctions import mkdirs
+      
       dat_pth = study.dat_pth
       
       self.sid = sample.sample_ID
@@ -115,13 +118,8 @@ class Landscape:
                               on=['class', 'class_name',
                                   'class_val', 'class_color']).fillna(0)
       
-      f = os.path.join(dat_pth, sample['coord_file'])
-      if not os.path.exists(f):
-          print("ERROR: data file " + f + " does not exist!")
-          sys.exit()
-      self.cell_data = pd.read_csv(f)
-      self.ncells = len(self.cell_data)
-      
+      self.coord_file = os.path.join(dat_pth, sample['coord_file'])
+       
       # general attributes
       self.binsiz = study.binsiz
       self.subbinsiz = study.subbinsiz 
@@ -131,16 +129,23 @@ class Landscape:
       self.units = study.units
       
       # loads all raster images
-      f = os.path.join(dat_pth, sample['raster_file'])
+      f = os.path.join(dat_pth, sample['roi_file'])
       if not os.path.exists(f):
           print("ERROR: raster file " + f + " does not exist!")
           sys.exit()
       aux = np.load(f)
       self.roiarr = aux['roi'] # ROI raster
-      self.kdearr = aux['kde'] # KDE raster (smoothed density landscape)
-      self.abuarr = aux['abu'] # local abundances of each class
-      self.mixarr = aux['mix'] # local mixing values of each class
       self.imshape = self.roiarr.shape
+      self.kde_file = os.path.join(dat_pth, sample['kde_file'])
+      self.abumix_file = os.path.join(dat_pth, sample['abumix_file'])
+      
+      # more raster attributes
+      pth = mkdirs(os.path.join(study.dat_pth, 'rasters', self.sid))
+      self.coloc_file = os.path.join(pth, self.sid + '_coloc.npz')  
+      self.nndist_file = os.path.join(pth, self.sid + '_nndist.npz')  
+      self.rhfunc_file = os.path.join(pth, self.sid + '_rhfunc.npz')  
+      self.geordGarr_file = os.path.join(pth, self.sid + '_geordGarr.npz')  
+      self.lmearr = []
       
       # slide image
       img = None
@@ -153,15 +158,7 @@ class Landscape:
       if (sample['mask_file'] != ''):
           msk = np.load(os.path.join(dat_pth, sample['mask_file']))['mask']
       self.msk = msk
-      
-      # more raster attributes
-      self.lmearr = []     # LME raster
-      self.colocarr = []   # Colocalization array
-      self.nndistarr = []  # NNDist array
-      self.rhfuncarr = []  # Ripley's H array
-      self.geordGarr = []  # Getis Ord G* arra
-      self.hotarr = []     # HOT array
-      
+          
       # pylandstats landscape object
       self.plsobj = []
 
@@ -213,20 +210,19 @@ class Landscape:
       from myfunctions import getis_ord_g_array, morisita_horn_array
       from myfunctions import nndist_array, circle
       from myfunctions import ripleys_K_array, ripleys_K_array_biv
-
+      
+      f = self.coord_file
+      if not os.path.exists(f):
+          print("ERROR: data file " + f + " does not exist!")
+          sys.exit()
+      data = pd.read_csv(f)
+      
       # analyses
       df = analyses.copy()
       iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0]
       isnndist = ~df.loc[df['name'] == 'nndist']['drop'].values[0]
       isrhfunc = ~df.loc[df['name'] == 'rhfunc']['drop'].values[0]
       isgordG = ~df.loc[df['name'] == 'gordG']['drop'].values[0]
-      
-      # default empty arrays
-      self.colocarr = []
-      self.nndistarr = []
-      self.rhfuncarr = []
-      self.geordGarr = []
-      self.hotarr = []
       
       # if not all analyses are dropped
       if (iscoloc or isnndist or isrhfunc or isgordG):
@@ -297,13 +293,13 @@ class Landscape:
           # produces a box-circle kernel
           circ = circle(self.kernel)
           subcirc = circle(self.subkernel)
-          data = self.cell_data
           
           # precalculate convolutions for all required classes
           for i, case in enumerate(cases):
               # coordinates of cells in class case
               aux = data.loc[data['class'] == case]
               X[aux.row, aux.col, i] = 1
+              
               N[:, :, i] = np.abs(np.rint(fftconvolve(X[:, :, i],
                                                       circ, mode='same')))
               n[:, :, i] = np.abs(np.rint(fftconvolve(X[:, :, i],
@@ -378,11 +374,33 @@ class Landscape:
                       H = np.log10(np.sqrt(K/np.pi)/self.subkernel)
                       rhfuncarr[:, :, rhfunc_comps.index(comp)] = H              
     
-          self.colocarr = colocarr
-          self.nndistarr = nndistarr
-          self.rhfuncarr = rhfuncarr
-          self.geordGarr = geordGarr
-          self.hotarr = hotarr
+          if iscoloc:
+              # saves coloc cases:
+              np.savez_compressed(self.coloc_file, coloc=colocarr)
+              del colocarr
+              
+          if isnndist:
+              # saves nndist cases:
+              np.savez_compressed(self.nndist_file, nndist=nndistarr)
+              del nndistarr
+              
+          if isrhfunc:
+              # saves rhfunc cases:
+              np.savez_compressed(self.rhfunc_file, rhfunc=rhfuncarr)
+              del rhfuncarr
+              
+          if isgordG:
+              # saves geordG cases:
+              np.savez_compressed(self.rhfunc_file, 
+                                  geordG=geordGarr,
+                                  hot=hotarr)
+              del geordGarr
+              del hotarr
+ 
+            
+          gc.collect()
+          
+          
                                 
 
   def loadLMELandscape(self):
@@ -406,6 +424,14 @@ class Landscape:
 
       dim = len(self.classes)
       lmearr = np.ones(self.imshape)*np.nan
+      
+      f = self.abumix_file
+      if not os.path.exists(f):
+          print("ERROR: raster file " + f + " does not exist!")
+          sys.exit()
+      aux = np.load(f)
+      abuarr = aux['abu'] # local abundances of each class
+      mixarr = aux['mix'] # local mixing values of each class
 
       # vectorized function for faster processing
       def indexvalue(x, edges):
@@ -415,13 +441,13 @@ class Landscape:
 
       for i, iclass in self.classes.iterrows():
           # if edges are not empty
-          if nedges:
+          if (len(nedges[i])>0):
               # get abundance level
-              aux = self.abuarr[:, :, i]
+              aux = abuarr[:, :, i]
               aux[np.isnan(aux)] = 0
               abu = vindexvalue(x=aux, edges=nedges[i])
               # get mixing level
-              aux = self.mixarr[:, :, i]
+              aux = mixarr[:, :, i]
               aux[np.isnan(aux)] = 0
               mix = vindexvalue(x=aux, edges=medges[i])
               # produces a single digital (dim-digit) code
@@ -433,6 +459,10 @@ class Landscape:
 
       # reduces the number of lme classes by grouping them
       self.lmearr = lmeRename(lmearr, dim)
+      
+      del abuarr
+      del mixarr
+      gc.collect()
       
       
   def plotLMELandscape(self, out_pth):
@@ -526,12 +556,16 @@ class Landscape:
       iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0]
       
       if iscoloc:
+          
+          aux = np.load(self.coloc_file)
+          colocarr = aux['coloc']
+          
           # combinations of cases:
           coloc_comps = df.loc[df['name'] == 'coloc']['comps'].values[0]
           
           # plots array of landscapes for these comparisons
           [fig, metrics] = plotCompLandscape(self.sid,
-                                             self.colocarr, 
+                                             colocarr, 
                                              coloc_comps, 
                                              self.imshape,
                                              'Colocalization index', 
@@ -556,7 +590,7 @@ class Landscape:
               # plot correlations between comparisons
               ttl = 'Colocalization index Correlations\nSample ID: ' + \
                   str(self.sid)
-              fig = plotCompCorrelations(self.colocarr, 
+              fig = plotCompCorrelations(colocarr, 
                                          coloc_comps, 
                                          ttl, 
                                          lims)
@@ -564,6 +598,9 @@ class Landscape:
                                        self.sid +'_coloc_correlations.png'),
                           bbox_inches='tight', dpi=300)
               plt.close()
+              
+          del colocarr
+          gc.collect() 
       
       
   def plotNNDistLandscape(self, out_pth, analyses, lims, do_plots):
@@ -581,12 +618,15 @@ class Landscape:
       
       if isnndist:
           
+          aux = np.load(self.nndist_file)
+          nndistarr = aux['nndist']
+          
           # combinations of cases:
           nndist_comps = df.loc[df['name'] == 'nndist']['comps'].values[0]
 
           # plots array of landscapes for these comparisons
           [fig, metrics] = plotCompLandscape(self.sid, 
-                                             self.nndistarr, 
+                                             nndistarr, 
                                              nndist_comps, 
                                              self.imshape,
                                              'Nearest Neighbor Distance index',
@@ -613,7 +653,7 @@ class Landscape:
               ttl = 'Nearest Neighbor Dist index Correlations\nSample ID: ' + \
                   str(self.sid)
                   
-              fig = plotCompCorrelations(self.nndistarr, 
+              fig = plotCompCorrelations(nndistarr, 
                                          nndist_comps,
                                          ttl, 
                                          lims)
@@ -621,6 +661,9 @@ class Landscape:
                                        self.sid +'_nndist_correlations.png'),
                           bbox_inches='tight', dpi=300)
               plt.close()
+              
+          del nndistcarr
+          gc.collect()     
       
 
   def plotRHFuncLandscape(self, out_pth, analyses, lims, do_plots):
@@ -638,12 +681,15 @@ class Landscape:
       
       if isrhfunc:
           
+          aux = np.load(self.rhfunc_file)
+          rhfuncarr = aux['rhfunc']
+          
           # combinations of cases:
           rhfunc_comps = df.loc[df['name'] == 'rhfunc']['comps'].values[0]
 
           # plots array of landscapes for these comparisons
           [fig, metrics] = plotCompLandscape(self.sid,
-                                             self.rhfuncarr,
+                                             rhfuncarr,
                                              rhfunc_comps, 
                                              self.imshape,
                                              'Ripley`s H function score', 
@@ -669,13 +715,16 @@ class Landscape:
               # plot correlations between comparisons
               ttl = 'Ripley`s H function score Correlations\nSample ID: ' + \
                      str(self.sid)
-              fig = plotCompCorrelations(self.rhfuncarr, rhfunc_comps, 
+              fig = plotCompCorrelations(rhfuncarr, rhfunc_comps, 
                                          ttl, lims)
               plt.savefig(os.path.join(out_pth,
                                        self.sid +'_rhfunc_correlations.png'),
                           bbox_inches='tight', dpi=300)
               plt.close()
               
+          del rhfuncarr
+          gc.collect()       
+          
       
   def plotGOrdLandscape(self, out_pth, analyses, lims, do_plots):
       """
@@ -692,12 +741,16 @@ class Landscape:
       
       if isgordG:
           
+          aux = np.load(self.geordG_file)
+          geordGarr = aux['geordG']
+          hotarr = aux['hot']
+          
           # combinations of cases:
           gordG_comps = df.loc[df['name'] == 'gordG']['comps'].values[0]
       
           # plots array of landscapes for these comparisons
           [fig, metrics] = plotCaseLandscape(self.sid,
-                                             self.geordGarr,
+                                             geordGarr,
                                              gordG_comps,
                                              self.imshape,
                                              'Getis-Ord Z score', 
@@ -722,7 +775,7 @@ class Landscape:
               
               # plots array of landscapes for these comparisons
               fig = plotDiscreteLandscape(self.sid, 
-                                          self.hotarr, 
+                                          hotarr, 
                                           gordG_comps, 
                                           self.imshape,
                                           'HOT score', 
@@ -736,6 +789,10 @@ class Landscape:
                                        self.sid +'_hots_landscape.png'),
                           bbox_inches='tight', dpi=300)
               plt.close()
+              
+          del gordGarr
+          del hotcarr
+          gc.collect()      
   
 
   def plotFactorCorrelations(self, out_pth, analyses, do_plots):
@@ -787,20 +844,35 @@ class Landscape:
       
       corr = pd.DataFrame()
       
+      colocarr = []
+      nndistarr = []
+      rhfuncarr = []
+      
+      if iscoloc:
+          aux = np.load(self.coloc_file)
+          colocarr = aux['coloc']
+      if isnndist:
+          aux = np.load(self.nndist_file)
+          nndistarr = aux['nndist']   
+      if isrhfunc:
+          aux = np.load(self.rhfunc_file)
+          rhfuncarr = aux['rhfunc']
+    
+    
       if iscoloc and isrhfunc:
+                      
           # plot correlations between coloc and RHindex comparisons
           ttl = 'Coloc - RHindex Correlations\nSample ID: ' + str(self.sid)
-          [fig, df] = plotFactorCorrelation(self.colocarr, 
+          [fig, df] = plotFactorCorrelation(colocarr, 
                                             coloc_comps, 
                                             'Coloc', 
                                             [0.0, 1.0],
-                                            self.rhfuncarr, 
+                                            rhfuncarr, 
                                             rhfunc_comps, 
                                             'RHindex', 
                                             [wmin, wmax],
                                             ttl, 
                                             self.classes)
-          
           if do_plots:
               fig.savefig(os.path.join(out_pth,
                                        self.sid + '_coloc-rhindex_corr.png'),
@@ -811,13 +883,14 @@ class Landscape:
           corr =  pd.concat([corr, df], ignore_index=True)
                 
       if iscoloc and isnndist:
+          
           # plot correlations between coloc and NNindex comparisons
           ttl = 'Coloc - NNdist Correlations\nSample ID: ' + str(self.sid)
-          [fig, df] = plotFactorCorrelation(self.colocarr, 
+          [fig, df] = plotFactorCorrelation(colocarr, 
                                              coloc_comps, 
                                             'coloc', 
                                             [0.0, 1.0],
-                                            self.nndistarr, 
+                                            nndistarr, 
                                             nndist_comps, 
                                             'RHindex', 
                                             [vmin, vmax],
@@ -833,19 +906,19 @@ class Landscape:
           corr =  pd.concat([corr, df], ignore_index=True)
                 
       if iscoloc and isnndist:
+          
           # plot correlations between NNindex and RHindex comparisons
           ttl = 'RHindex - NNdist Correlations\nSample ID: ' + str(self.sid)
-          [fig, df] = plotFactorCorrelation(self.rhfuncarr, 
+          [fig, df] = plotFactorCorrelation(rhfuncarr, 
                                             rhfunc_comps, 
                                             'RHindex', 
                                             [wmin, wmax],
-                                            self.nndistarr, 
+                                            nndistarr, 
                                             nndist_comps, 
                                             'NNdist', 
                                             [vmin, vmax],
                                             ttl,
                                             self.classes)
-          
           if do_plots:
               fig.savefig(os.path.join(out_pth, 
                                        self.sid +'_nnindex-rhindex_corr.png'),
@@ -858,6 +931,11 @@ class Landscape:
       # saves correlations table
       corr.to_csv(os.path.join(out_pth,
                                self.sid +'_factor_correlations.csv'), sep=',')
+      
+      del colocarr 
+      del nndistarr 
+      del rhfuncarr 
+      gc.collect()
           
 
   def landscapeAnalysis(self, sample, samplcsv, do_plots):
@@ -867,6 +945,7 @@ class Landscape:
       lme_pth = mkdirs(os.path.join(self.res_pth, 'lmes'))
       
       # sets background to 0 and create a pls object
+      
       aux = self.lmearr.copy()
       aux[np.isnan(aux)] = 0
       
@@ -1956,13 +2035,13 @@ def main(args):
 
     """
     # %% debug starts
-    debug = False
+    debug = True
     
     if debug:
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
+        argsfile = os.path.join(main_pth, 'CRC_set.csv')
         REDO = False
         GRPH = False
         CASE = 0
@@ -2017,14 +2096,10 @@ def main(args):
         
         # %% STEP 4: prints space stats
         fact_pth = mkdirs(os.path.join(land.res_pth, 'space_factors'))
-        land.plotColocLandscape(fact_pth, study.analyses, 
-                                [0.0 ,1.0], GRPH)
-        land.plotNNDistLandscape(fact_pth, study.analyses,
-                                 [-1, 1], GRPH)
-        land.plotRHFuncLandscape(fact_pth, study.analyses, 
-                                 [-1, 1], GRPH)
-        land.plotGOrdLandscape(fact_pth, study.analyses, 
-                               [-3, 3], GRPH)
+        land.plotColocLandscape(fact_pth, study.analyses, [0.0 ,1.0], GRPH)
+        land.plotNNDistLandscape(fact_pth, study.analyses, [-1, 1], GRPH)
+        land.plotRHFuncLandscape(fact_pth, study.analyses, [-1, 1], GRPH)
+        land.plotGOrdLandscape(fact_pth, study.analyses, [-3, 3], GRPH)
         land.plotFactorCorrelations(fact_pth, study.analyses, GRPH)
         
         # saves a proxy table to flag end of process (in case next step is 
