@@ -227,7 +227,8 @@ class Sample:
       if (len(cxy) > 0): 
       
           # updates coordinae values by conversion factor
-          cxy.x, cxy.y = np.int32(cxy.x*self.factor), np.int32(cxy.y*self.factor)
+          cxy.x = np.int32(cxy.x*self.factor) 
+          cxy.y = np.int32(cxy.y*self.factor)
     
           # gets extreme pixel values
           xmin, xmax = np.min(cxy.x), np.max(cxy.x)
@@ -440,6 +441,7 @@ class Sample:
       # drop cells not in the approved class list
       self.cell_data = data.loc[data['class'].isin(self.classes['class'])]
       
+      return(len(self.cell_data) > 0)
 
   def roi_mask(self):
       
@@ -454,6 +456,8 @@ class Sample:
       
       # total number of cells (after filtering) 
       self.num_cells = len(self.cell_data) 
+      
+      return(np.sum(self.roiarr) > 0)
       
       
   def kde_mask(self):
@@ -1314,43 +1318,45 @@ def main(args):
         valid_sample = sample.setup_data(sample.supbw)
         
         if (valid_sample):
-
+            
             # STEP 3: Filter cells according to density filters
-            sample.filter_class(study)
+            valid_sample = sample.filter_class(study)
             
-            # STEP 4: calculate a ROI mask for region with cells
-            sample.roi_mask()
+            if (valid_sample):
             
-            # STEP 5: create raster images from density KDE profiles
-            kdearr = sample.kde_mask()
+                # STEP 4: calculate a ROI mask for region with cells
+                valid_sample = sample.roi_mask()
+            
+                if (valid_sample):
         
-            # STEP 6: create raster images from cell mixing profiles
-            abuarr, mixarr = sample.abumix_mask(kdearr)
-            del kdearr
-            gc.collect()
-            
-            # STEP 7: calculates quadrat populations for coarse graining
-            sample.quadrat_stats(abuarr, mixarr)
-            del abuarr
-            del mixarr
-            gc.collect()
-        
-            # STEP 8: calculate global spacial statistics
-            sample.space_stats(study.dat_path)
-            
-            # STEP 9: saves main data files
-            sample.save_data()
+                    # STEP 5: create raster images from density KDE profiles
+                    kdearr = sample.kde_mask()
+                
+                    # STEP 6: create raster images from cell mixing profiles
+                    abuarr, mixarr = sample.abumix_mask(kdearr)
+                    del kdearr
+                    gc.collect()
+                    
+                    # STEP 7: calculates quadrat populations 
+                    sample.quadrat_stats(abuarr, mixarr)
+                    del abuarr
+                    del mixarr
+                    gc.collect()
+                
+                    # STEP 8: calculate global spacial statistics
+                    sample.space_stats(study.dat_path)
+                    
+                    # STEP 9: saves main data files
+                    sample.save_data()
       
     else:
         
-        print(msg + " >>> loading data..." )
-        
-        valid_sample = True
-            
         # STEP 10: if sample is already pre-processed read data
+        print(msg + " >>> loading data..." )
         sample.load_data()
+        valid_sample = True
     
-    # %% STEP 11: calculates general stats
+    # %% STEP 11: calculates general stats for this sample 
     if (valid_sample):
         
         sample.general_stats()
