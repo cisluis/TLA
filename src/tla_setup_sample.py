@@ -222,75 +222,82 @@ class Sample:
       cxy = pd.read_csv(self.raw_cell_data_file)[['class', 'x', 'y']]
       cxy = cxy.loc[cxy['class'].isin(self.classes['class'])]
       
-      # updates coordinae values by conversion factor
-      cxy.x, cxy.y = np.int32(cxy.x*self.factor), np.int32(cxy.y*self.factor)
-
-      # gets extreme pixel values
-      xmin, xmax = np.min(cxy.x), np.max(cxy.x)
-      ymin, ymax = np.min(cxy.y), np.max(cxy.y)
-
-      imshape = [np.nan, np.nan]
-
-      # reads image file (if exists)
-      imfile_exist = os.path.exists(self.raw_imfile)
-      if imfile_exist:
-          ims = io.imread(self.raw_imfile)
-          imsh = (ims.shape[0]*self.factor,
-                  ims.shape[1]*self.factor,
-                  ims.shape[2])
-          ims = resize(ims, imsh, anti_aliasing=True, preserve_range=True)
-          imshape = ims.shape
-
-      # reads mask file (if exists)
-      mkfile_exist = os.path.exists(self.raw_mkfile)
-      if mkfile_exist:
-          msc = io.imread(self.raw_mkfile)
-          imsh = (msc.shape[0]*self.factor,
-                  msc.shape[1]*self.factor)
-          msc = resize(msc, imsh, anti_aliasing=True, preserve_range=True)
-          imshape = msc.shape
-
-      # check for consistency in image and mask
-      if ((imfile_exist and mkfile_exist) and
-          ((ims.shape[0] != msc.shape[0]) or
-           (ims.shape[1] != msc.shape[1]))):
-          #print('\n =====> WARNING! sample_ID: ' + self.sid +
-          #      '; image and mask are NOT of the same size, ' +
-          #      'thus adopting mask domain...')
-          ims = np.rint(resize(ims, (msc.shape[0], msc.shape[1], 3),
-                               anti_aliasing=True, 
-                               preserve_range=True)).astype('uint8')
-
-      # limits for image cropping
-      rmin = np.nanmax([0, ymin - edge])
-      cmin = np.nanmax([0, xmin - edge])
-      rmax = np.nanmin([imshape[0] - 1, ymax + edge])
-      cmax = np.nanmin([imshape[1] - 1, xmax + edge])
-      imshape = [int(rmax - rmin + 1), int(cmax - cmin + 1)]
-
-      # shifts coordinates
-      cell_data = xyShift(cxy, imshape, [rmin, cmin], self.scale)
-
-      # create croped versions of image and mask raster
-      img = np.zeros((imshape[0], imshape[1], 3))
-      if imfile_exist:
-          img[0:(rmax - rmin), 
-              0:(cmax - cmin), :] = ims[rmin:rmax, cmin:cmax, :]
-      img = img.astype('uint8')
+      valid = False
       
-      msk = np.zeros(imshape)
-      if mkfile_exist:
-          msk[0:(rmax - rmin), 
-              0:(cmax - cmin)] = msc[rmin:rmax, cmin:cmax]
-      [cell_data, msk_img] = getBlobs(cell_data, msk)
+      if (len(cxy) > 0): 
       
-      self.cell_data = cell_data
-      self.imshape = imshape
-      self.img = img
-      self.msk = msk_img
-      
-      np.savez_compressed(self.mask_file, roi=self.msk)
-      
+          # updates coordinae values by conversion factor
+          cxy.x, cxy.y = np.int32(cxy.x*self.factor), np.int32(cxy.y*self.factor)
+    
+          # gets extreme pixel values
+          xmin, xmax = np.min(cxy.x), np.max(cxy.x)
+          ymin, ymax = np.min(cxy.y), np.max(cxy.y)
+    
+          imshape = [np.nan, np.nan]
+    
+          # reads image file (if exists)
+          imfile_exist = os.path.exists(self.raw_imfile)
+          if imfile_exist:
+              ims = io.imread(self.raw_imfile)
+              imsh = (ims.shape[0]*self.factor,
+                      ims.shape[1]*self.factor,
+                      ims.shape[2])
+              ims = resize(ims, imsh, anti_aliasing=True, preserve_range=True)
+              imshape = ims.shape
+    
+          # reads mask file (if exists)
+          mkfile_exist = os.path.exists(self.raw_mkfile)
+          if mkfile_exist:
+              msc = io.imread(self.raw_mkfile)
+              imsh = (msc.shape[0]*self.factor,
+                      msc.shape[1]*self.factor)
+              msc = resize(msc, imsh, anti_aliasing=True, preserve_range=True)
+              imshape = msc.shape
+    
+          # check for consistency in image and mask
+          if ((imfile_exist and mkfile_exist) and
+              ((ims.shape[0] != msc.shape[0]) or
+               (ims.shape[1] != msc.shape[1]))):
+              #print('\n =====> WARNING! sample_ID: ' + self.sid +
+              #      '; image and mask are NOT of the same size, ' +
+              #      'thus adopting mask domain...')
+              ims = np.rint(resize(ims, (msc.shape[0], msc.shape[1], 3),
+                                   anti_aliasing=True, 
+                                   preserve_range=True)).astype('uint8')
+    
+          # limits for image cropping
+          rmin = np.nanmax([0, ymin - edge])
+          cmin = np.nanmax([0, xmin - edge])
+          rmax = np.nanmin([imshape[0] - 1, ymax + edge])
+          cmax = np.nanmin([imshape[1] - 1, xmax + edge])
+          imshape = [int(rmax - rmin + 1), int(cmax - cmin + 1)]
+    
+          # shifts coordinates
+          cell_data = xyShift(cxy, imshape, [rmin, cmin], self.scale)
+    
+          # create croped versions of image and mask raster
+          img = np.zeros((imshape[0], imshape[1], 3))
+          if imfile_exist:
+              img[0:(rmax - rmin), 
+                  0:(cmax - cmin), :] = ims[rmin:rmax, cmin:cmax, :]
+          img = img.astype('uint8')
+          
+          msk = np.zeros(imshape)
+          if mkfile_exist:
+              msk[0:(rmax - rmin), 
+                  0:(cmax - cmin)] = msc[rmin:rmax, cmin:cmax]
+          [cell_data, msk_img] = getBlobs(cell_data, msk)
+          
+          self.cell_data = cell_data
+          self.imshape = imshape
+          self.img = img
+          self.msk = msk_img
+          
+          np.savez_compressed(self.mask_file, roi=self.msk)
+          
+          valid = True
+    
+      return(valid)
       
   def save_data(self):
       
@@ -1304,52 +1311,58 @@ def main(args):
         print( msg + " >>> pre-processing..." )
        
         # STEP 2: loads and format coordinate data
-        sample.setup_data(sample.supbw)
+        valid_sample = sample.setup_data(sample.supbw)
+        
+        if (valid_sample):
 
-        # STEP 3: Filter cells according to density filters
-        sample.filter_class(study)
+            # STEP 3: Filter cells according to density filters
+            sample.filter_class(study)
+            
+            # STEP 4: calculate a ROI mask for region with cells
+            sample.roi_mask()
+            
+            # STEP 5: create raster images from density KDE profiles
+            kdearr = sample.kde_mask()
         
-        # STEP 4: calculate a ROI mask for region with cells
-        sample.roi_mask()
+            # STEP 6: create raster images from cell mixing profiles
+            abuarr, mixarr = sample.abumix_mask(kdearr)
+            del kdearr
+            gc.collect()
+            
+            # STEP 7: calculates quadrat populations for coarse graining
+            sample.quadrat_stats(abuarr, mixarr)
+            del abuarr
+            del mixarr
+            gc.collect()
         
-        # STEP 5: create raster images from density KDE profiles
-        kdearr = sample.kde_mask()
-        
-        # STEP 6: create raster images from cell mixing profiles
-        abuarr, mixarr = sample.abumix_mask(kdearr)
-        del kdearr
-        gc.collect()
-        
-        # STEP 7: calculates quadrat populations for coarse graining
-        sample.quadrat_stats(abuarr, mixarr)
-        del abuarr
-        del mixarr
-        gc.collect()
-        
-        # STEP 8: calculate global spacial statistics
-        sample.space_stats(study.dat_path)
-        
-        # STEP 9: saves main data files
-        sample.save_data()
+            # STEP 8: calculate global spacial statistics
+            sample.space_stats(study.dat_path)
+            
+            # STEP 9: saves main data files
+            sample.save_data()
       
     else:
         
         print(msg + " >>> loading data..." )
+        
+        valid_sample = True
             
         # STEP 10: if sample is already pre-processed read data
         sample.load_data()
     
     # %% STEP 11: calculates general stats
-    sample.general_stats()
-    
-    # STEP 12: plots landscape data
-    if (GRPH and sample.num_cells > 0):
-        sample.plot_landscape_scatter()
-        sample.plot_landscape_props()
-        sample.plot_class_landscape_props()
-            
-    # LAST step: saves study stats results for sample 
-    sample.output(study)
+    if (valid_sample):
+        
+        sample.general_stats()
+        
+        # STEP 12: plots landscape data
+        if (GRPH and sample.num_cells > 0):
+            sample.plot_landscape_scatter()
+            sample.plot_landscape_props()
+            sample.plot_class_landscape_props()
+                
+        # LAST step: saves study stats results for sample 
+        sample.output(study)
 
     # %% the end
     return(0)
