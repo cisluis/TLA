@@ -578,7 +578,7 @@ class Landscape:
           # saves landscape metrics table
           metrics.to_csv(os.path.join(out_pth,
                                       self.sid +'_coloc_stats.csv'),
-                         sep=',')
+                         sep=',', index=False, header=True)
     
           if do_plots:  
               # saves to png file
@@ -639,7 +639,7 @@ class Landscape:
           # saves landscape metrics table
           metrics.to_csv(os.path.join(out_pth,
                                       self.sid +'_nndist_stats.csv'),
-                         sep=',')
+                         sep=',', index=False, header=True)
           
           if do_plots:
               
@@ -702,7 +702,7 @@ class Landscape:
           # saves landscape metrics table
           metrics.to_csv(os.path.join(out_pth,
                                        self.sid +'_rhfunc_stats.csv'),
-                          sep=',')           
+                          sep=',', index=False, header=True)           
                  
           if do_plots:
               
@@ -763,7 +763,7 @@ class Landscape:
           # saves landscape metrics table
           metrics.to_csv(os.path.join(out_pth,
                                        self.sid +'_geordG_stats.csv'),
-                          index=False, header=True) 
+                          sep=',', index=False, header=True) 
           
           if do_plots:
               
@@ -837,13 +837,7 @@ class Landscape:
               rhfunc_comps = [(cases.index(c[0]), 
                                cases.index(c[1])) for c in comps]
         
-      vmin = 0.25*round(np.nanquantile(self.nndistarr, .001)/0.25)
-      vmax = 0.25*round(np.nanquantile(self.nndistarr, .999)/0.25)
-      wmin = 0.25*round(np.nanquantile(self.rhfuncarr, .001)/0.25)
-      wmax = 0.25*round(np.nanquantile(self.rhfuncarr, .999)/0.25)
-      
       corr = pd.DataFrame()
-      
       colocarr = []
       nndistarr = []
       rhfuncarr = []
@@ -857,6 +851,11 @@ class Landscape:
       if isrhfunc:
           aux = np.load(self.rhfunc_file)
           rhfuncarr = aux['rhfunc']
+          
+      vmin = 0.25*round(np.nanquantile(nndistarr, .001)/0.25)
+      vmax = 0.25*round(np.nanquantile(nndistarr, .999)/0.25)
+      wmin = 0.25*round(np.nanquantile(rhfuncarr, .001)/0.25)
+      wmax = 0.25*round(np.nanquantile(rhfuncarr, .999)/0.25)    
     
     
       if iscoloc and isrhfunc:
@@ -929,8 +928,10 @@ class Landscape:
           corr =  pd.concat([corr, df], ignore_index=True)
       
       # saves correlations table
-      corr.to_csv(os.path.join(out_pth,
-                               self.sid +'_factor_correlations.csv'), sep=',')
+      if (len(corr) > 0):
+          corr.to_csv(os.path.join(out_pth,
+                                   self.sid +'_factor_correlations.csv'), 
+                      sep=',', index=False, header=True)
       
       del colocarr 
       del nndistarr 
@@ -958,18 +959,18 @@ class Landscape:
       adj_pairs = lmeAdjacency(self.plsobj, self.classes)
       adj_pairs.to_csv(os.path.join(lme_pth, 
                                     self.sid +'_lme_adjacency_odds.csv'),
-                       sep=',', index=False)
+                       sep=',', index=False, header=True)
       
       # get all patch metrics 
       patch_metrics = getPatchMetrics(self.plsobj, self.classes)
       patch_metrics.to_csv(os.path.join(lme_pth, 
                                         self.sid +'_lme_patch_metrics.csv'),
-                           sep=',', index=False)
+                           sep=',', index=False, header=True)
       # get all class metrics 
       class_metrics = getClassMetrics(self.plsobj, self.classes)
       class_metrics.to_csv(os.path.join(lme_pth, 
                                         self.sid +'_lme_class_metrics.csv'),
-                           sep=',', index=False)
+                           sep=',', index=False, header=True)
       # get all landscape-level metrics 
       landscape_metrics = getLandscapeMetrics(self.plsobj)
       landscape_metrics.to_csv(os.path.join(lme_pth, 
@@ -991,7 +992,7 @@ class Landscape:
       # get sample stats
       sample_out = getSampleStats(sample, self.plsobj, adj_pairs,
                                   class_metrics, landscape_metrics)
-      sample_out.to_csv(samplcsv, index=False)
+      sample_out.to_csv(samplcsv, sep=',', index=False, header=True)
   
     
 # %% Private Functions
@@ -2104,7 +2105,7 @@ def main(args):
         
         # saves a proxy table to flag end of process (in case next step is 
         # commented and don't want to redo all analysis up to here)
-        sample.to_csv(samplcsv, index=False)
+        sample.to_csv(samplcsv, sep=',', index=False, header=True)
         
         # %% STEP 5: pylandstats analysis
         # Regular metrics can be computed at the patch, class and
