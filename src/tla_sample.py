@@ -662,7 +662,7 @@ class Landscape:
                           bbox_inches='tight', dpi=300)
               plt.close()
               
-          del nndistcarr
+          del nndistarr
           gc.collect()     
       
 
@@ -2035,7 +2035,7 @@ def main(args):
 
     """
     # %% debug starts
-    debug = True
+    debug = False
     
     if debug:
         # running from the IDE
