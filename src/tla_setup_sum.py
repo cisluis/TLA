@@ -142,7 +142,7 @@ class Study:
       perms = list(permutations(self.classes['class'].tolist(), 2))
       prods = list(product(self.classes['class'].tolist(), repeat=2))
       
-      aux = pd.DataFrame(data = {'name': ['coloc','nndist','rhfunc','gordG'], 
+      aux = pd.DataFrame(data = {'name': ['coloc','nndist','rhfunc','geordG'], 
                                  'drop': [False, False, False, False],
                                  'comps':[combs, perms, prods, cases]})
       aux.to_csv(os.path.join(self.dat_path, 

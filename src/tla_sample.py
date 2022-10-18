@@ -222,10 +222,10 @@ class Landscape:
       iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0]
       isnndist = ~df.loc[df['name'] == 'nndist']['drop'].values[0]
       isrhfunc = ~df.loc[df['name'] == 'rhfunc']['drop'].values[0]
-      isgordG = ~df.loc[df['name'] == 'gordG']['drop'].values[0]
+      isgeordG = ~df.loc[df['name'] == 'geordG']['drop'].values[0]
       
       # if not all analyses are dropped
-      if (iscoloc or isnndist or isrhfunc or isgordG):
+      if (iscoloc or isnndist or isrhfunc or isgeordG):
           
           # lists of classes cases to be calculated (x is ref, y is target)
           cases_x = []
@@ -234,7 +234,7 @@ class Landscape:
           coloc_comps = []
           nndist_comps = []
           rhfunc_comps = []
-          gordG_comps = []
+          geordG_comps = []
           
           # get comparisons
           if iscoloc:
@@ -261,15 +261,15 @@ class Landscape:
                                     len(rhfunc_comps)), np.nan)
               cases_x  = list(set(cases_x) | set([c[0] for c in rhfunc_comps]))
               cases_y  = list(set(cases_y) | set([c[1] for c in rhfunc_comps]))
-          if isgordG:
+          if isgeordG:
               # combinations of cases:
-              gordG_comps = df.loc[df['name'] == 'gordG']['comps'].values[0]
+              geordG_comps = df.loc[df['name'] == 'geordG']['comps'].values[0]
               # Gets-Ord statistics (G* and HOT value)
               geordGarr = np.full((self.imshape[0], self.imshape[1], 
-                                    len(gordG_comps)), np.nan)
+                                    len(geordG_comps)), np.nan)
               hotarr = np.full((self.imshape[0], self.imshape[1], 
-                                 len(gordG_comps)), np.nan)
-              cases_x  = list(set(cases_x) | set(gordG_comps))
+                                 len(geordG_comps)), np.nan)
+              cases_x  = list(set(cases_x) | set(geordG_comps))
           
           # list classes with non-zero abundance in this sample  
           valid_cases = self.classes.loc[self.classes['number_of_cells'] > 0, 
@@ -315,10 +315,10 @@ class Landscape:
               rcx = np.array(aux[['row', 'col']])
               
               # Getis-Ord stats on smooth abundance profile for this class
-              if (case_x in gordG_comps):
+              if (case_x in geordG_comps):
                   G = getis_ord_g_array(N[:, :, xi], self.roiarr)
-                  [geordGarr[:, :, gordG_comps.index(case_x)], 
-                   hotarr[:, :, gordG_comps.index(case_x)]] = G
+                  [geordGarr[:, :, geordG_comps.index(case_x)], 
+                   hotarr[:, :, geordG_comps.index(case_x)]] = G
               
               for j, case_y in enumerate(cases_y):
                   
@@ -389,7 +389,7 @@ class Landscape:
               np.savez_compressed(self.rhfunc_file, rhfunc=rhfuncarr)
               del rhfuncarr
               
-          if isgordG:
+          if isgeordG:
               # saves geordG cases:
               np.savez_compressed(self.geordG_file, 
                                   geordG=geordGarr,
@@ -726,7 +726,7 @@ class Landscape:
           gc.collect()       
           
       
-  def plotGOrdLandscape(self, out_pth, analyses, lims, do_plots):
+  def plotGeOrdLandscape(self, out_pth, analyses, lims, do_plots):
       """
       Plots Getis-Ord Z score landscape from raster
 
@@ -737,21 +737,21 @@ class Landscape:
       
       # analyses
       df = analyses.copy()
-      isgordG = ~df.loc[df['name'] == 'gordG']['drop'].values[0]
+      isgeordG = ~df.loc[df['name'] == 'geordG']['drop'].values[0]
       
-      if isgordG:
+      if isgeordG:
           
           aux = np.load(self.geordG_file)
           geordGarr = aux['geordG']
           hotarr = aux['hot']
           
           # combinations of cases:
-          gordG_comps = df.loc[df['name'] == 'gordG']['comps'].values[0]
+          geordG_comps = df.loc[df['name'] == 'geordG']['comps'].values[0]
       
           # plots array of landscapes for these comparisons
           [fig, metrics] = plotCaseLandscape(self.sid,
                                              geordGarr,
-                                             gordG_comps,
+                                             geordG_comps,
                                              self.imshape,
                                              'Getis-Ord Z score', 
                                              lims,
@@ -762,21 +762,21 @@ class Landscape:
           
           # saves landscape metrics table
           metrics.to_csv(os.path.join(out_pth,
-                                       self.sid +'_gordG_stats.csv'),
+                                       self.sid +'_geordG_stats.csv'),
                           index=False, header=True) 
           
           if do_plots:
               
               # saves to png file
               fig.savefig(os.path.join(out_pth,
-                                       self.sid +'_gordG_landscape.png'),
+                                       self.sid +'_geordG_landscape.png'),
                           bbox_inches='tight', dpi=300)
               plt.close()
               
               # plots array of landscapes for these comparisons
               fig = plotDiscreteLandscape(self.sid, 
                                           hotarr, 
-                                          gordG_comps, 
+                                          geordG_comps, 
                                           self.imshape,
                                           'HOT score', 
                                           [-1, 1],
@@ -790,7 +790,7 @@ class Landscape:
                           bbox_inches='tight', dpi=300)
               plt.close()
               
-          del gordGarr
+          del geordGarr
           del hotcarr
           gc.collect()      
   
@@ -2099,7 +2099,7 @@ def main(args):
         land.plotColocLandscape(fact_pth, study.analyses, [0.0 ,1.0], GRPH)
         land.plotNNDistLandscape(fact_pth, study.analyses, [-1, 1], GRPH)
         land.plotRHFuncLandscape(fact_pth, study.analyses, [-1, 1], GRPH)
-        land.plotGOrdLandscape(fact_pth, study.analyses, [-3, 3], GRPH)
+        land.plotGeOrdLandscape(fact_pth, study.analyses, [-3, 3], GRPH)
         land.plotFactorCorrelations(fact_pth, study.analyses, GRPH)
         
         # saves a proxy table to flag end of process (in case next step is 
