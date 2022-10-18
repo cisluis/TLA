@@ -791,7 +791,7 @@ class Landscape:
               plt.close()
               
           del geordGarr
-          del hotcarr
+          del hotarr
           gc.collect()      
   
 
