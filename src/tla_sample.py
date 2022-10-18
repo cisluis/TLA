@@ -391,7 +391,7 @@ class Landscape:
               
           if isgordG:
               # saves geordG cases:
-              np.savez_compressed(self.geordGarr_file, 
+              np.savez_compressed(self.geordG_file, 
                                   geordG=geordGarr,
                                   hot=hotarr)
               del geordGarr
