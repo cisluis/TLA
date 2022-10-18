@@ -144,7 +144,7 @@ class Landscape:
       self.coloc_file = os.path.join(pth, self.sid + '_coloc.npz')  
       self.nndist_file = os.path.join(pth, self.sid + '_nndist.npz')  
       self.rhfunc_file = os.path.join(pth, self.sid + '_rhfunc.npz')  
-      self.geordGarr_file = os.path.join(pth, self.sid + '_geordGarr.npz')  
+      self.geordG_file = os.path.join(pth, self.sid + '_geordG.npz')  
       self.lmearr = []
       
       # slide image
