@@ -423,7 +423,7 @@ class Landscape:
       medges = self.classes['mixing_edges']
 
       dim = len(self.classes)
-      lmearr = np.ones(self.imshape)*np.nan
+      lmearr = np.zeros(self.imshape)
       
       f = self.abumix_file
       if not os.path.exists(f):
@@ -2042,7 +2042,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'CRC_set.csv')
+        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
         REDO = False
         GRPH = False
         CASE = 0
