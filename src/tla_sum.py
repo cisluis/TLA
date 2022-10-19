@@ -79,39 +79,41 @@ class Study:
             
             f = os.path.join(res_pth, sid + '_lme_tbl.csv')
             if not os.path.exists(f):
-                print("ERROR: samples table file " + f + " does not exist!")
-                sys.exit()
-            self.lme_stats = pd.concat([self.lme_stats, 
-                                        pd.read_csv(f)],
-                                       ignore_index=True)
+                print("WARNING: sample: " + sid + " was droped from TLA!")
+            else: 
+                
+                self.lme_stats = pd.concat([self.lme_stats, 
+                                            pd.read_csv(f)],
+                                           ignore_index=True)
+                
+                # colocalization features
+                f = os.path.join(sfs_pth, sid +'_coloc_stats.csv')
+                if os.path.exists(f):
+                    self.coloc_stats = pd.concat([self.coloc_stats, 
+                                                  pd.read_csv(f)],
+                                                 ignore_index=True)
+                    
+                # NN distance features
+                f = os.path.join(sfs_pth, sid +'_nndist_stats.csv')
+                if os.path.exists(f):
+                    self.nndist_stats = pd.concat([self.nndist_stats, 
+                                                   pd.read_csv(f)],
+                                                  ignore_index=True)
+                    
+                # Ripley's H features
+                f = os.path.join(sfs_pth, sid +'_rhfunc_stats.csv')
+                if os.path.exists(f):
+                    self.rhfunc_stats = pd.concat([self.rhfunc_stats, 
+                                                   pd.read_csv(f)],
+                                                  ignore_index=True)
+                    
+                # Getis-Ord features 
+                f = os.path.join(sfs_pth, sid +'_georG_stats.csv')
+                if os.path.exists(f):
+                    self.gordG_stats = pd.concat([self.gordG_stats, 
+                                                  pd.read_csv(f)],
+                                                 ignore_index=True)
             
-            # colocalization features
-            f = os.path.join(sfs_pth, sid +'_coloc_stats.csv')
-            if os.path.exists(f):
-                self.coloc_stats = pd.concat([self.coloc_stats, 
-                                              pd.read_csv(f)],
-                                             ignore_index=True)
-                
-            # NN distance features
-            f = os.path.join(sfs_pth, sid +'_nndist_stats.csv')
-            if os.path.exists(f):
-                self.nndist_stats = pd.concat([self.nndist_stats, 
-                                               pd.read_csv(f)],
-                                              ignore_index=True)
-                
-            # Ripley's H features
-            f = os.path.join(sfs_pth, sid +'_rhfunc_stats.csv')
-            if os.path.exists(f):
-                self.rhfunc_stats = pd.concat([self.rhfunc_stats, 
-                                               pd.read_csv(f)],
-                                              ignore_index=True)
-                
-            # Getis-Ord features 
-            f = os.path.join(sfs_pth, sid +'_georG_stats.csv')
-            if os.path.exists(f):
-                self.gordG_stats = pd.concat([self.gordG_stats, 
-                                              pd.read_csv(f)],
-                                             ignore_index=True)
             
       # saves study tables
       f = os.path.join(self.dat_pth, self.name + '_lme_tbl.csv')      
