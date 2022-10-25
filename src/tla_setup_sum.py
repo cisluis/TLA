@@ -224,7 +224,7 @@ def quadFigs(quadrats, classes, pngout):
         qats = []
         
         if (len(vals) > 0):
-            qats = np.nanquantile(vals, [0.0, 0.16, 0.84, 1.0]).tolist()
+            qats = np.nanquantile(vals, [0.0, 0.5, 0.87, 1.0]).tolist()
             # qats = [0.0, np.mean(vals),
             #         np.mean(vals) + np.std(vals), np.max(vals)]
             

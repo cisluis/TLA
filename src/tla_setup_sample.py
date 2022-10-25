@@ -57,9 +57,16 @@ class Study:
       
       # sets path for processed data
       self.dat_path = mkdirs(os.path.join(main_pth, study['data_path']))
+      
+      # scale parameters
+      self.factor = 1.0
+      if 'factor' in study:
+          self.factor = study['factor']
+      self.scale = study['scale']/self.factor
+      self.units = study['units']
 
       # the size of quadrats and subquadrats
-      self.binsiz = int((study['binsiz']))
+      self.binsiz = int(10*np.ceil((study['binsiz']/self.scale)/10))
       self.subbinsiz = int(self.binsiz/5)
 
       # bandwidth size for convolutions is half the quadrat size
@@ -67,16 +74,9 @@ class Study:
       self.bw = int(self.subbinsiz/2)
       
       # r values for Ripleys' H function
-      dr = int(self.bw/2)
-      self.rs = list(np.arange(dr, (self.supbw)+dr, dr))
-      self.ridx = (np.abs(np.asarray(self.rs) - self.subbinsiz)).argmin()
-      
-      # scale parameters
-      self.factor = 1.0
-      if 'factor' in study:
-          self.factor = study['factor']
-      self.scale = study['scale']*self.factor
-      self.units = study['units']
+      dr = int(self.bw)
+      self.rs = list(np.arange(dr, (self.binsiz)+dr, dr))
+      self.ridx = (np.abs(np.asarray(self.rs) - self.supbw)).argmin()
 
       # Filter parameters:
       # (-) cell class to run filter on (e.g. tumor cells)
@@ -167,11 +167,13 @@ class Sample:
       if (self.tbl.image_file == ''):
           self.raw_imfile = ''
           self.imfile = ''  
+          self.isimg = False
       else: 
           self.raw_imfile = os.path.join(study.raw_path, self.tbl.image_file)
           f = mkdirs(os.path.join(study.dat_path, 'images'))
           self.tbl['image_file'] = 'images/' + self.sid + '_img.jpg'
           self.imfile = os.path.join(f, self.sid + '_img.jpg')
+          self.isimg = True
           
       # creates raster folder and add path to df
       f = mkdirs(os.path.join(study.dat_path, 'rasters', self.sid))
@@ -179,10 +181,14 @@ class Sample:
       if (self.tbl.mask_file == ''):    
           self.raw_mkfile = ''
           self.tbl['mask_file']= ''
+          self.ismk = False
       else:
           self.raw_mkfile = os.path.join(study.raw_path, self.tbl.mask_file)
           self.tbl['mask_file'] = pth + self.sid +'_mask.npz'
-      self.mask_file = os.path.join(f, self.sid + '_mask.npz')  
+          self.mask_file = os.path.join(f, self.sid + '_mask.npz')
+          self.ismk = True
+            
+      # raster file names
       self.tbl['roi_file'] =  pth + self.sid + '_roi.npz'
       self.roi_file = os.path.join(f, self.sid + '_roi.npz')
       self.tbl['kde_file'] = pth +  self.sid + '_kde.npz'
@@ -222,105 +228,93 @@ class Sample:
       cxy = pd.read_csv(self.raw_cell_data_file)[['class', 'x', 'y']]
       cxy = cxy.loc[cxy['class'].isin(self.classes['class'])]
       
-      valid = False
-      
-      if (len(cxy) > 0): 
-      
-          # updates coordinae values by conversion factor
-          cxy.x = np.int32(cxy.x*self.factor) 
-          cxy.y = np.int32(cxy.y*self.factor)
-    
-          # gets extreme pixel values
-          xmin, xmax = np.min(cxy.x), np.max(cxy.x)
-          ymin, ymax = np.min(cxy.y), np.max(cxy.y)
-    
-          imshape = [np.nan, np.nan]
-    
-          # reads image file (if exists)
-          imfile_exist = os.path.exists(self.raw_imfile)
-          if imfile_exist:
+      # updates coordinae values by conversion factor (from pix to xip)
+      cxy.x, cxy.y = np.int32(cxy.x*self.factor), np.int32(cxy.y*self.factor)
+
+      # gets extreme pixel values
+      xmin, xmax = np.min(cxy.x), np.max(cxy.x)
+      ymin, ymax = np.min(cxy.y), np.max(cxy.y)
+
+      imshape = [np.nan, np.nan]
+
+      # reads image file (if exists)
+      if self.isimg:
+          if os.path.exists(self.raw_imfile):
               ims = io.imread(self.raw_imfile)
               imsh = (ims.shape[0]*self.factor,
                       ims.shape[1]*self.factor,
                       ims.shape[2])
               ims = resize(ims, imsh, anti_aliasing=True, preserve_range=True)
               imshape = ims.shape
-    
-          # reads mask file (if exists)
-          mkfile_exist = os.path.exists(self.raw_mkfile)
-          if mkfile_exist:
+          else:
+              print("WARNING: image: " + self.raw_imfile + " not found!")
+              self.isimg = False
+
+      # reads mask file (if exists)
+      if self.ismk:
+          if os.path.exists(self.raw_mkfile):
               msc = io.imread(self.raw_mkfile)
               imsh = (msc.shape[0]*self.factor,
                       msc.shape[1]*self.factor)
               msc = resize(msc, imsh, anti_aliasing=True, preserve_range=True)
               imshape = msc.shape
-    
-          # check for consistency in image and mask
-          if ((imfile_exist and mkfile_exist) and
-              ((ims.shape[0] != msc.shape[0]) or
-               (ims.shape[1] != msc.shape[1]))):
-              #print('\n =====> WARNING! sample_ID: ' + self.sid +
-              #      '; image and mask are NOT of the same size, ' +
-              #      'thus adopting mask domain...')
-              ims = np.rint(resize(ims, (msc.shape[0], msc.shape[1], 3),
-                                   anti_aliasing=True, 
-                                   preserve_range=True)).astype('uint8')
-    
-          # limits for image cropping
-          rmin = np.nanmax([0, ymin - edge])
-          cmin = np.nanmax([0, xmin - edge])
-          rmax = np.nanmin([imshape[0] - 1, ymax + edge])
-          cmax = np.nanmin([imshape[1] - 1, xmax + edge])
-          imshape = [int(rmax - rmin + 1), int(cmax - cmin + 1)]
-    
-          # shifts coordinates
-          cell_data = xyShift(cxy, imshape, [rmin, cmin], self.scale)
-    
-          # create croped versions of image and mask raster
-          img = np.zeros((imshape[0], imshape[1], 3))
-          if imfile_exist:
-              img[0:(rmax - rmin), 
-                  0:(cmax - cmin), :] = ims[rmin:rmax, cmin:cmax, :]
-          img = img.astype('uint8')
-          
-          msk = np.zeros(imshape)
-          if mkfile_exist:
-              msk[0:(rmax - rmin), 
-                  0:(cmax - cmin)] = msc[rmin:rmax, cmin:cmax]
-          [cell_data, msk_img] = getBlobs(cell_data, msk)
-          
-          self.cell_data = cell_data
-          self.imshape = imshape
+          else:
+              print("WARNING: image: " + self.raw_mkfile + " not found!")
+              self.ismk = False
+              
+      # check for consistency in image and mask
+      if ((self.isimg  and self.ismk) and
+          ((ims.shape[0] != msc.shape[0]) or
+           (ims.shape[1] != msc.shape[1]))):
+          #print('\n =====> WARNING! sample_ID: ' + self.sid +
+          #      '; image and mask are NOT of the same size, ' +
+          #      'thus adopting mask domain...')
+          ims = np.rint(resize(ims, (msc.shape[0], msc.shape[1], 3),
+                               anti_aliasing=True, 
+                               preserve_range=True)).astype('uint8')
+
+      # limits for image cropping
+      rmin = np.nanmax([0, ymin - edge])
+      cmin = np.nanmax([0, xmin - edge])
+      rmax = np.nanmin([imshape[0] - 1, ymax + edge])
+      cmax = np.nanmin([imshape[1] - 1, xmax + edge])
+      imshape = [int(rmax - rmin + 1), int(cmax - cmin + 1)]
+
+      # shifts coordinates
+      cell_data = xyShift(cxy, imshape, [rmin, cmin], self.scale)
+
+      # create croped versions of image and mask raster
+      img = np.zeros((imshape[0], imshape[1], 3))
+      if self.isimg:
+          img[0:(rmax - rmin), 
+              0:(cmax - cmin), :] = ims[rmin:rmax, cmin:cmax, :]
+          self.img = img.astype('uint8')
+          io.imsave(self.imfile, self.img, check_contrast=False)
+      else:
           self.img = img
+      
+      msk = np.zeros(imshape)
+      if self.ismk:
+          msk[0:(rmax - rmin), 
+              0:(cmax - cmin)] = msc[rmin:rmax, cmin:cmax]
+          [cell_data, msk_img] = getBlobs(cell_data, msk)
           self.msk = msk_img
-          
           np.savez_compressed(self.mask_file, roi=self.msk)
-          
-          valid = True
-    
-      return(valid)
+      else:
+          self.msk = msk
+      
+      self.cell_data = cell_data
+      self.imshape = imshape    
+      
       
   def save_data(self):
-      
-      from skimage import io
       
       # saves main data files
       self.cell_data.to_csv(self.cell_data_file, index=False)
       self.classes.to_csv(self.classes_file, index=False)
-      
-      if (self.imfile != ''):
-          io.imsave(self.imfile, self.img, check_contrast=False)
-          
-      np.savez_compressed(self.mask_file, mask=self.msk )
-      np.savez_compressed(self.spafac_file, 
-                          coloc=self.coloc,
-                          nndist=self.nndist,
-                          rhfunc=self.rhfunc)
-      
       self.qstats.to_csv(os.path.join(self.res_pth, 
                                       self.sid + '_quadrat_stats.csv'),
                          index=False, header=True)
-      
       
       
   def load_data(self):
@@ -330,10 +324,7 @@ class Sample:
       # load all data (if it was previously created)
       self.cell_data = pd.read_csv(self.cell_data_file)
       self.classes = pd.read_csv(self.classes_file)
-      
-      aux = np.load(self.mask_file)
-      self.msk = aux['mask']
-      
+     
       aux = np.load(self.roi_file)
       self.roiarr = aux['roi']
       
@@ -350,12 +341,18 @@ class Sample:
       
       self.imshape = [self.roiarr.shape[0], self.roiarr.shape[1]]
       
-      if (self.imfile != ''):
+      if (self.isimg ):
           self.img = io.imread(self.imfile)
       else:    
           self.img = np.zeros((self.imshape[0], self.imshape[1], 3))
-      
+          
+      if self.ismk:
+          aux = np.load(self.mask_file)
+          self.msk = aux['mask']
+      else:
+          self.msk = np.zeros(self.imshape)
   
+    
   def output(self, study): 
       
       samples_out = self.tbl.to_frame().T
@@ -369,6 +366,7 @@ class Sample:
       allstats_out.to_csv(os.path.join(self.res_pth, 
                                        self.sid + '_samples_stats.csv'), 
                           index=False, header=True)
+      
       
   def filter_class(self, study):
       """
@@ -441,71 +439,85 @@ class Sample:
       # drop cells not in the approved class list
       self.cell_data = data.loc[data['class'].isin(self.classes['class'])]
       
-      return(len(self.cell_data) > 0)
 
-  def roi_mask(self):
+  def roi_mask(self, redo):
       
-      from myfunctions import kdeMask, filterCells
+      fout = self.roi_file
       
-      # gets a mask for the region that has cells inside
-      [_, self.roiarr] = kdeMask(self.cell_data, self.imshape, self.bw)
+      if redo or not os.path.exists(fout):
+      
+          from myfunctions import kdeMask, filterCells
+          
+          # gets a mask for the region that has cells inside
+          [_, self.roiarr] = kdeMask(self.cell_data, self.imshape, self.bw)
+          np.savez_compressed(fout, roi=self.roiarr)
+      
+      else:
+            
+          aux = np.load(fout)
+          self.roiarr = aux['roi']
+      
       # filter out cells outside of ROI
       self.cell_data = filterCells(self.cell_data, self.roiarr)
-      
-      np.savez_compressed(self.roi_file, roi=self.roiarr)
       
       # total number of cells (after filtering) 
       self.num_cells = len(self.cell_data) 
       
-      return(np.sum(self.roiarr) > 0)
       
-      
-  def kde_mask(self):
+  def kde_mask(self, redo):
       """
       Calculates a pixel resolution KDE profile for each cell type and record
       it into a raster array.
 
       """
       
-      from myfunctions import kdeMask
-
       classes = self.classes.copy()
-      kdearr = np.zeros((self.imshape[0], self.imshape[1], len(classes)))
       classes['raster_index'] = classes.index
       classes['number_of_cells'] = 0
       classes['fraction_of_total'] = np.nan
-      
       aux = []
-
       for i, row in classes.iterrows():
-
           aux = self.cell_data.loc[self.cell_data['class'] == row['class']]
           classes.loc[classes['class'] == row['class'], 
                       'number_of_cells'] = len(aux)
-
-          if (len(aux) > 0):
-              # do KDE on pixel locations of cells
-              [z, _] = kdeMask(aux, self.imshape, self.bw)
-              kdearr[:, :, i] = z
-              
-              del z
-          del aux 
-
+          
       if (self.num_cells > 0):
           classes['fraction_of_total'] = classes['number_of_cells'] / \
               self.num_cells
-        
-      self.classes = classes
+      self.classes = classes    
+          
+      fout = self.kde_file
+      if redo or not os.path.exists(fout):
       
-      np.savez_compressed(self.kde_file, kde=kdearr)
-      
+          from myfunctions import kdeMask
+    
+          kdearr = np.zeros((self.imshape[0], self.imshape[1], len(classes)))
+          
+          for i, row in classes.iterrows():
+    
+              aux = self.cell_data.loc[self.cell_data['class'] == row['class']]
+              
+              if (len(aux) > 0):
+                  # do KDE on pixel locations of cells
+                  [z, _] = kdeMask(aux, self.imshape, self.bw)
+                  kdearr[:, :, i] = z
+                  del z
+              del aux 
+              
+          np.savez_compressed(fout, kde=kdearr)
+              
+      else:
+          
+          aux = np.load(fout)
+          kdearr = aux['kde']
+   
       # clean memory
       gc.collect()
       
       return(kdearr)
      
      
-  def abumix_mask(self, kdearr):
+  def abumix_mask(self, redo, kdearr):
       """
       Calculates a pixel resolution abundance and mixing score profile for each
       cell type and record it into raster arrays.
@@ -533,86 +545,121 @@ class Sample:
       discrete locations (typically a KDE with a small bandwidth).
 
       """
- 
-      from scipy.signal import fftconvolve
-      from myfunctions import circle
-
-      classes = self.classes.copy()
-      abuarr = np.full((self.imshape[0], self.imshape[1], len(classes)), 
-                       np.nan)
-      mixarr = np.full((self.imshape[0], self.imshape[1], len(classes)), 
-                       np.nan)
-
-      # produces a (circular) kernel with same size as quadrat
-      kernel = circle(self.supbw) # box-circle
-      # kernel = gkern(self.supbw) # gaussian (not correct)
-      # area of kernel
-      A = np.sum(kernel)
-
+      
+      classes = self.classes.copy() 
       classes['mean_abundance'] = 0
       classes['std_abundance'] = np.nan
       classes['mean_mixing'] = 0
       classes['std_mixing'] = np.nan
-
-      for i, clss in classes.iterrows():
-
-          # smooth (binned) cell location field
-          
-          x = kdearr[:, :, i]
-          
-          if (np.sum(x) > 0):
-
-              # mask of cell locations
-              msk = 1.0*(x > 0)
-    
-              # dispersion in local abundance
-              xx = fftconvolve(np.multiply(x, x), kernel, mode='same')
-              xx[msk == 0] = 0
-    
-              # number of cells in kernel (local abundance)
-              N = fftconvolve(x, kernel, mode='same')
-              N[msk == 0] = 0
-              
-              # calculates the MH univariate index
-              NN = np.multiply(N, N)
-              M = 2 * np.divide(NN, (A*xx + NN),
-                                out=np.zeros(msk.shape),
-                                where=(msk > 0))
-              
-              # revert NAN values
-              N[msk == 0] = np.nan
-              M[M > 1.0] = 1.0
-              M[M <= 0.0] = np.nan
-              M[msk == 0] = np.nan
-    
-              # assign raster values
-              abuarr[:, :, i] = N
-              mixarr[:, :, i] = M
-              
-              # get basic stats
-              n = np.mean(N[msk > 0])
-              if ( n > 0):
-                  classes.loc[classes['class'] == clss['class'],
-                              'mean_abundance'] = n
-                  classes.loc[classes['class'] == clss['class'],
-                              'std_abundance'] = np.std(N[msk > 0])
-                  classes.loc[classes['class'] == clss['class'],
-                              'mean_mixing'] = np.nanmean(M[msk > 0])
-                  classes.loc[classes['class'] == clss['class'],
-                              'std_mixing'] = np.nanstd(M[msk > 0])
-                  
-              del msk
-              del xx
-              del N
-              del M
-        
-          del x
-          
-      self.classes = classes
       
-      np.savez_compressed(self.abumix_file, 
-                          abu=abuarr,
-                          mix=mixarr)
+      fout = self.abumix_file
+      if redo or not os.path.exists(fout):
+ 
+          from scipy.signal import fftconvolve
+          from myfunctions import circle
+    
+          abuarr = np.full((self.imshape[0], self.imshape[1], 
+                            len(classes)), np.nan)
+          mixarr = np.full((self.imshape[0], self.imshape[1], 
+                            len(classes)), np.nan)
+    
+          # produces a (circular) kernel with same size as quadrat
+          kernel = circle(self.supbw) # box-circle
+          # kernel = gkern(self.supbw) # gaussian (not correct)
+          # area of kernel
+          A = np.sum(kernel)
+    
+          for i, clss in classes.iterrows():
+    
+              # get smooth (binned) cell location field for this class
+              x = kdearr[:, :, i]
+             
+              if (np.sum(x) > 0):
+    
+                  # mask of cell locations
+                  msk = 1.0*(x > 0)
+        
+                  # dispersion in local abundance
+                  xx = fftconvolve(np.multiply(x, x), kernel, mode='same')
+                  xx[msk == 0] = 0
+        
+                  # number of cells in kernel (local abundance)
+                  N = fftconvolve(x, kernel, mode='same')
+                  N[msk == 0] = 0
+                  
+                  # calculates the MH univariate index
+                  NN = np.multiply(N, N)
+                  M = 2 * np.divide(NN, (A*xx + NN),
+                                    out=np.zeros(msk.shape),
+                                    where=(msk > 0))
+                  
+                  # revert NAN values
+                  N[msk == 0] = np.nan
+                  M[M > 1.0] = 1.0
+                  M[M <= 0.0] = np.nan
+                  M[msk == 0] = np.nan
+        
+                  # assign raster values
+                  abuarr[:, :, i] = N
+                  mixarr[:, :, i] = M
+                  
+                  # get basic stats
+                  n = np.mean(N[msk > 0])
+                  if ( n > 0):
+                      classes.loc[classes['class'] == clss['class'],
+                                  'mean_abundance'] = n
+                      classes.loc[classes['class'] == clss['class'],
+                                  'std_abundance'] = np.std(N[msk > 0])
+                      classes.loc[classes['class'] == clss['class'],
+                                  'mean_mixing'] = np.nanmean(M[msk > 0])
+                      classes.loc[classes['class'] == clss['class'],
+                                  'std_mixing'] = np.nanstd(M[msk > 0])
+                      
+                  del msk
+                  del xx
+                  del N
+                  del M
+                  
+              del x
+              
+              # saves raster
+              np.savez_compressed(fout, abu=abuarr, mix=mixarr)
+   
+      else:
+          
+          # loads raster
+          aux = np.load(fout)
+          abuarr = aux['abu']
+          mixarr = aux['mix']
+          
+          for i, clss in classes.iterrows():
+              
+              # smooth (binned) cell location field for this class
+              x = kdearr[:, :, i]
+              
+              if (np.sum(x) > 0):
+    
+                  # mask of cell locations
+                  msk = 1.0*(x > 0)
+              
+                  # assign raster values
+                  N = abuarr[:, :, i]
+                  M = mixarr[:, :, i]
+                  
+                  # get basic stats
+                  n = np.mean(N[msk > 0])
+                  if ( n > 0):
+                      classes.loc[classes['class'] == clss['class'],
+                                  'mean_abundance'] = n
+                      classes.loc[classes['class'] == clss['class'],
+                                  'std_abundance'] = np.std(N[msk > 0])
+                      classes.loc[classes['class'] == clss['class'],
+                                  'mean_mixing'] = np.nanmean(M[msk > 0])
+                      classes.loc[classes['class'] == clss['class'],
+                                  'std_mixing'] = np.nanstd(M[msk > 0])
+ 
+      # updates classes df
+      self.classes = classes  
       
       # clean memory
       gc.collect()
@@ -667,7 +714,7 @@ class Sample:
       self.qstats = pop.astype({'row': int, 'col': int})
 
 
-  def space_stats(self, dat_path):
+  def space_stats(self, redo, dat_path):
         """
         Calculates pixel resolution statistics in raster arrays:
             
@@ -692,141 +739,163 @@ class Sample:
 
         """
         
-        from scipy.signal import fftconvolve
-        from myfunctions import circle, nndist
-        from myfunctions import ripleys_K, ripleys_K_biv
+        fout = self.spafac_file
+        if redo or not os.path.exists(fout):
         
-        data = self.cell_data
-        
-        # number of classes
-        nc = len(self.classes)
-
-        # raster array of cell abundance in kernels and subkernels
-        X = np.zeros((self.imshape[0], self.imshape[1], nc))
-        n = np.zeros((self.imshape[0], self.imshape[1], nc, len(self.rs)))
-
-        # Colocalization index
-        colocarr = np.full((nc, nc), np.nan)
-        
-        # Nearest Neighbor Distance index
-        nndistarr = np.full((nc, nc), np.nan)
-        
-        # precalculate local abundance for all classes and radii
-        # (needs to be precalculated for combination measures)
-        cols = {}
-        for i, clsx in self.classes.iterrows():
-            for j, clsy in self.classes.iterrows():
-                nam = 'H_' + clsx['class'] + '_' + clsy['class']
-                cols[nam] = np.nan
-                
-            # coordinates of cells in class x
-            aux = data.loc[data['class'] == clsx['class']]
-            if (len(aux) > 0):
-                X[aux.row, aux.col, i] = 1
-                for k, r in enumerate(self.rs):
-                    n[:, :, i, k] = np.abs(np.rint(fftconvolve(X[:, :, i],
-                                                               circle(r), 
-                                                               mode='same')))
-                    
-        # Ripley's H function
-        rhfuncarr = np.full((nc, nc, len(self.rs), 2), np.nan)
-        rhfuncarr[:, :, 0:len(self.rs), 0]= self.rs
-        rhfuncdf = pd.DataFrame({'sample_ID': [str(x) for x in self.rs], 
-                                 'r': self.rs})
-        rhfuncdf.sample_ID = self.sid            
-        rhfuncdf = pd.concat([rhfuncdf, 
-                              pd.DataFrame(cols, index=rhfuncdf.index)], 
-                             axis=1)
-        
-        
-        # loop thru all combinations of classes (pair-wise comparisons)
-        for i, clsx in self.classes.iterrows():
+            from scipy.signal import fftconvolve
+            from myfunctions import circle, nndist
+            from myfunctions import ripleys_K, ripleys_K_biv
             
-            # coordinates of cells in class x
-            aux = data.loc[data['class'] == clsx['class']]
+            data = self.cell_data
             
-            if (len(aux) > 0):
-            
-                rcx = np.array(aux[['row', 'col']])    
-                # Ripleys H score (identity)
-                for k, r in enumerate(self.rs):
-                    rk = ripleys_K(rcx, n[:, :, i, k])
-                    rk = (np.sqrt(rk/np.pi) - r)/r
-                    rhfuncarr[i, i, k, 1] = rk
-                    del rk
-                    
-                nam = 'H_' + clsx['class'] + '_' + clsx['class']
-                rhfuncdf[nam] = rhfuncarr[i, i, :, 1] 
+            # number of classes
+            nc = len(self.classes)
     
-                # Colocalization index
-                colocarr[i, i] = 1.0
+            # raster array of cell abundance in kernels and subkernels
+            X = np.zeros((self.imshape[0], self.imshape[1], nc))
+            n = np.zeros((self.imshape[0], self.imshape[1], nc, len(self.rs)))
     
-                # Nearest Neighbor Distance index (identity)
-                nndistarr[i, i] = 0.0
-                
+            # Colocalization index
+            colocarr = np.full((nc, nc), np.nan)
+            
+            # Nearest Neighbor Distance index
+            nndistarr = np.full((nc, nc), np.nan)
+            
+            # precalculate local abundance for all classes and radii
+            # (needs to be precalculated for combination measures)
+            cols = {}
+            for i, clsx in self.classes.iterrows():
                 for j, clsy in self.classes.iterrows():
-    
-                    # coordinates of cells in class y
-                    aux = data.loc[data['class'] == clsy['class']]
+                    nam = 'H_' + clsx['class'] + '_' + clsy['class']
+                    cols[nam] = np.nan
                     
-                    if (len(aux) > 0):
-                    
-                        rcy = np.array(aux[['row', 'col']])
+                # coordinates of cells in class x
+                aux = data.loc[data['class'] == clsx['class']]
+                if (len(aux) > 0):
+                    X[aux.row, aux.col, i] = 1
+                    for k, r in enumerate(self.rs):
+                        n[:, :, 
+                          i, k] = np.abs(np.rint(fftconvolve(X[:, :, i],
+                                                             circle(r),
+                                                             mode='same')))
+                        
+            # Ripley's H function
+            rsp = list(np.around(np.array(self.rs) * self.scale, decimals=2))
+            rhfuncarr = np.full((nc, nc, len(self.rs), 2), np.nan)
+            rhfuncarr[:, :, 0:len(self.rs), 0]= self.rs
+            rhfuncdf = pd.DataFrame({'sample_ID': [str(x) for x in self.rs], 
+                                     'r': self.rs,
+                                     'r_physical': rsp})
+            rhfuncdf.sample_ID = self.sid            
+            rhfuncdf = pd.concat([rhfuncdf, 
+                                  pd.DataFrame(cols, index=rhfuncdf.index)], 
+                                 axis=1)
+            
+            
+            # loop thru all combinations of classes (pair-wise comparisons)
+            for i, clsx in self.classes.iterrows():
+                
+                # coordinates of cells in class x
+                aux = data.loc[data['class'] == clsx['class']]
+                
+                if (len(aux) > 0):
+                
+                    rcx = np.array(aux[['row', 'col']])    
+                    # Ripleys H score (identity)
+                    for k, r in enumerate(self.rs):
+                        rk = ripleys_K(rcx, n[:, :, i, k])
+                        rk = (np.sqrt(rk/np.pi) - r)/r
+                        rhfuncarr[i, i, k, 1] = rk
+                        del rk
+                        
+                    nam = 'H_' + clsx['class'] + '_' + clsx['class']
+                    rhfuncdf[nam] = rhfuncarr[i, i, :, 1] 
         
-                        if (i != j):
-                            
-                            # Ripleys H score (bivarite)
-                            for k, r in enumerate(self.rs):
-                                rk = ripleys_K_biv(rcx, n[:, :, i, k], 
-                                                   rcy, n[:, :, j, k])
-                                rk = (np.sqrt(rk/np.pi) - r)/r
-                                rhfuncarr[i, j, k, 1] = rk
-                                del rk
-                                
-                            nam = 'H_' + clsx['class'] + '_' + clsy['class']
-                            rhfuncdf[nam] = rhfuncarr[i, j, :, 1] 
+                    # Colocalization index
+                    colocarr[i, i] = 1.0
         
-                            # Nearest Neighbor Distance index
-                            nndistarr[i, j] = nndist(rcx, rcy)
+                    # Nearest Neighbor Distance index (identity)
+                    nndistarr[i, i] = 0.0
                     
-                        if (i > j):
-                            # MH index from quadrats sampling
-                            
-                            if ((clsx['class'] in self.qstats.columns) and
-                                (clsy['class'] in self.qstats.columns)):
+                    for j, clsy in self.classes.iterrows():
+        
+                        # coordinates of cells in class y
+                        aux = data.loc[data['class'] == clsy['class']]
+                        
+                        if (len(aux) > 0):
+                        
+                            rcy = np.array(aux[['row', 'col']])
+            
+                            if (i != j):
                                 
-                                aux = self.qstats[[clsx['class'], 
-                                               clsy['class']]].copy().dropna()
-                                aux['x'] =  aux[clsx['class']]/ \
-                                    aux[clsx['class']].sum()
-                                aux['y'] =  aux[clsy['class']]/ \
-                                    aux[clsy['class']].sum()
+                                # Ripleys H score (bivarite)
+                                for k, r in enumerate(self.rs):
+                                    rk = ripleys_K_biv(rcx, n[:, :, i, k], 
+                                                       rcy, n[:, :, j, k])
+                                    rk = (np.sqrt(rk/np.pi) - r)/r
+                                    rhfuncarr[i, j, k, 1] = rk
+                                    del rk
+                                    
+                                nam = 'H_' + clsx['class'] + \
+                                    '_' + clsy['class']
+                                rhfuncdf[nam] = rhfuncarr[i, j, :, 1] 
+            
+                                # Nearest Neighbor Distance index
+                                nndistarr[i, j] = nndist(rcx, rcy)
+                        
+                            if (i > j):
+                                # MH index from quadrats sampling
                                 
-                                xxyy = (aux['x']*aux['x']).sum() + \
-                                    (aux['y']*aux['y']).sum()
-                            
-                                if (xxyy > 0):
-                                    M = 2 * (aux['x']*aux['y']).sum()/xxyy
+                                if ((clsx['class'] in self.qstats.columns) and
+                                    (clsy['class'] in self.qstats.columns)):
+                                    
+                                    aux = self.qstats[[clsx['class'],
+                                                       clsy['class']]].copy()
+                                    aux = aux.dropna()
+                                    aux['x'] =  aux[clsx['class']]/ \
+                                        aux[clsx['class']].sum()
+                                    aux['y'] =  aux[clsy['class']]/ \
+                                        aux[clsy['class']].sum()
+                                    
+                                    xxyy = (aux['x']*aux['x']).sum() + \
+                                        (aux['y']*aux['y']).sum()
+                                
+                                    if (xxyy > 0):
+                                        M = 2 * (aux['x']*aux['y']).sum()/xxyy
+                                    else:
+                                        M = np.nan
                                 else:
                                     M = np.nan
-                            else:
-                                M = np.nan
-                                
-                            colocarr[i, j]= M
-                            colocarr[j, i]= M
-
+                                    
+                                colocarr[i, j]= M
+                                colocarr[j, i]= M
+    
+    
+            f = os.path.join(dat_path, 'results', 'samples', 
+                             self.sid, self.sid + '_Ripleys_H_function.csv')
+            rhfuncdf.to_csv(f, index=False, header=True)
+            
+            np.savez_compressed(self.spafac_file, 
+                                coloc=colocarr,
+                                nndist=nndistarr,
+                                rhfunc=rhfuncarr)
+            
+            del rhfuncdf
+            del X
+            del n
+            gc.collect()
+        
+        else:
+              
+            aux = np.load(fout)
+            colocarr = aux['coloc']
+            nndistarr = aux['nndist']
+            rhfuncarr = aux['rhfunc']
+            
+        
         self.coloc = colocarr
         self.nndist = nndistarr
         self.rhfunc = rhfuncarr
-        
-        f = os.path.join(dat_path, 'results', 'samples', 
-                         self.sid, self.sid + '_Ripleys_H_function.csv')
-        rhfuncdf.to_csv(f, index=False, header=True)
-        
-        del rhfuncdf
-        del X
-        del n
-        gc.collect()
         
 
   def general_stats(self):
@@ -872,24 +941,23 @@ class Sample:
       for comp in comps:   
           ca = self.classes.iloc[comp[0]]['class']
           cb = self.classes.iloc[comp[1]]['class']
-          stats['Coloc_' + ca + '_' + cb] = self.coloc[comp[0], comp[1]]
+          stats['coloc_' + ca + '_' + cb] = self.coloc[comp[0], comp[1]]
           
       # records overal Nearest Neighbor Distance index at pixel level
       comps = list(permutations(self.classes.index.values.tolist(), 2))
       for comp in comps:   
           ca = self.classes.iloc[comp[0]]['class']
           cb = self.classes.iloc[comp[1]]['class']
-          stats['NNdist_' + ca + '_' + cb] = self.nndist[comp[0], comp[1]]
+          stats['nndist_' + ca + '_' + cb] = self.nndist[comp[0], comp[1]]
           
       # records overal Ripley's H score at pixel level
       comps = list(product(self.classes.index.values.tolist(), repeat=2))
       for comp in comps:   
           ca = self.classes.iloc[comp[0]]['class']
           cb = self.classes.iloc[comp[1]]['class']
-          stats['RHFunc_' + ca + '_' + cb] = self.rhfunc[comp[0],
+          stats['rhfunc_' + ca + '_' + cb] = self.rhfunc[comp[0],
                                                          comp[1],
                                                          self.ridx, 1]
-      
       if ( A > 0 ):
           tot_dens = N/A
           tot_dens_units = N/roi_area
@@ -1276,7 +1344,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'BE_set_1.csv')
+        argsfile = os.path.join(main_pth, 'CRC_set.csv')
         REDO = False
         GRPH = False
         CASE = 0
@@ -1315,60 +1383,52 @@ def main(args):
         print( msg + " >>> pre-processing..." )
        
         # STEP 2: loads and format coordinate data
-        valid_sample = sample.setup_data(sample.supbw)
+        sample.setup_data(sample.supbw)
+
+        # STEP 3: Filter cells according to density filters
+        sample.filter_class(study)
         
-        if (valid_sample):
-            
-            # STEP 3: Filter cells according to density filters
-            valid_sample = sample.filter_class(study)
-            
-            if (valid_sample):
-            
-                # STEP 4: calculate a ROI mask for region with cells
-                valid_sample = sample.roi_mask()
-            
-                if (valid_sample):
+        # STEP 4: calculate a ROI mask for region with cells
+        sample.roi_mask(REDO)
         
-                    # STEP 5: create raster images from density KDE profiles
-                    kdearr = sample.kde_mask()
-                
-                    # STEP 6: create raster images from cell mixing profiles
-                    abuarr, mixarr = sample.abumix_mask(kdearr)
-                    del kdearr
-                    gc.collect()
-                    
-                    # STEP 7: calculates quadrat populations 
-                    sample.quadrat_stats(abuarr, mixarr)
-                    del abuarr
-                    del mixarr
-                    gc.collect()
-                
-                    # STEP 8: calculate global spacial statistics
-                    sample.space_stats(study.dat_path)
-                    
-                    # STEP 9: saves main data files
-                    sample.save_data()
+        # STEP 5: create raster images from density KDE profiles
+        kdearr = sample.kde_mask(REDO)
+        
+        # STEP 6: create raster images from cell mixing profiles
+        abuarr, mixarr = sample.abumix_mask(REDO, kdearr)
+        del kdearr
+        gc.collect()
+        
+        # STEP 7: calculates quadrat populations for coarse graining
+        sample.quadrat_stats(abuarr, mixarr)
+        del abuarr
+        del mixarr
+        gc.collect()
+        
+        # STEP 8: calculate global spacial statistics
+        sample.space_stats(REDO, study.dat_path)
+        
+        # STEP 9: saves main data files
+        sample.save_data()
       
     else:
         
-        # STEP 10: if sample is already pre-processed read data
         print(msg + " >>> loading data..." )
+            
+        # STEP 10: if sample is already pre-processed read data
         sample.load_data()
-        valid_sample = True
     
-    # %% STEP 11: calculates general stats for this sample 
-    if (valid_sample):
-        
-        sample.general_stats()
-        
-        # STEP 12: plots landscape data
-        if (GRPH and sample.num_cells > 0):
-            sample.plot_landscape_scatter()
-            sample.plot_landscape_props()
-            sample.plot_class_landscape_props()
-                
-        # LAST step: saves study stats results for sample 
-        sample.output(study)
+    # %% STEP 11: calculates general stats
+    sample.general_stats()
+    
+    # STEP 12: plots landscape data
+    if (GRPH and sample.num_cells > 0):
+        sample.plot_landscape_scatter()
+        sample.plot_landscape_props()
+        sample.plot_class_landscape_props()
+            
+    # LAST step: saves study stats results for sample 
+    sample.output(study)
 
     # %% the end
     return(0)

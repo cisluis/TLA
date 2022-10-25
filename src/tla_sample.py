@@ -29,6 +29,8 @@ from ast import literal_eval
 
 from argparse import ArgumentParser
 
+from myfunctions import mkdirs
+
 Image.MAX_IMAGE_PIXELS = 600000000
 
 __version__  = "1.1.0"
@@ -101,8 +103,6 @@ class Landscape:
     
   def __init__(self, sample, study):
       
-      from myfunctions import mkdirs
-      
       dat_pth = study.dat_pth
       
       self.sid = sample.sample_ID
@@ -145,6 +145,7 @@ class Landscape:
       self.nndist_file = os.path.join(pth, self.sid + '_nndist.npz')  
       self.rhfunc_file = os.path.join(pth, self.sid + '_rhfunc.npz')  
       self.geordG_file = os.path.join(pth, self.sid + '_geordG.npz')  
+      self.lme_file = os.path.join(pth, self.sid + '_lme.npz')  
       self.lmearr = []
       
       # slide image
@@ -163,7 +164,7 @@ class Landscape:
       self.plsobj = []
 
     
-  def getSpaceStats(self, analyses):
+  def getSpaceStats(self, redo, analyses):
       """
       Calculates pixel resolution statistics in raster arrays:
           
@@ -219,14 +220,21 @@ class Landscape:
       
       # analyses
       df = analyses.copy()
-      iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0] and \
-          not os.path.exists(self.coloc_file)
-      isnndist = ~df.loc[df['name'] == 'nndist']['drop'].values[0] and \
-          not os.path.exists(self.nndist_file)
-      isrhfunc = ~df.loc[df['name'] == 'rhfunc']['drop'].values[0] and \
-          not os.path.exists(self.rhfunc_file)
-      isgeordG = ~df.loc[df['name'] == 'geordG']['drop'].values[0] and \
-          not os.path.exists(self.geordG_file)
+      
+      if (redo):
+          iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0] 
+          isnndist = ~df.loc[df['name'] == 'nndist']['drop'].values[0] 
+          isrhfunc = ~df.loc[df['name'] == 'rhfunc']['drop'].values[0] 
+          isgeordG = ~df.loc[df['name'] == 'geordG']['drop'].values[0] 
+      else:
+          iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0] and \
+              not os.path.exists(self.coloc_file)
+          isnndist = ~df.loc[df['name'] == 'nndist']['drop'].values[0] and \
+              not os.path.exists(self.nndist_file)
+          isrhfunc = ~df.loc[df['name'] == 'rhfunc']['drop'].values[0] and \
+              not os.path.exists(self.rhfunc_file)
+          isgeordG = ~df.loc[df['name'] == 'geordG']['drop'].values[0] and \
+              not os.path.exists(self.geordG_file)
       
       # if not all analyses are dropped
       if (iscoloc or isnndist or isrhfunc or isgeordG):
@@ -404,7 +412,7 @@ class Landscape:
           gc.collect()
           
           
-  def loadLMELandscape(self):
+  def loadLMELandscape(self, redo):
       """
       Produces raster array with LME code values. 
       This is based on a KDE raster, which is a smoothed cell concentration 
@@ -420,51 +428,61 @@ class Landscape:
 
       """
 
-      nedges = self.classes['abundance_edges']
-      medges = self.classes['mixing_edges']
+      # if this analysis hasn't been done
+      if (redo or not os.path.exists(self.lme_file)):
 
-      dim = len(self.classes)
-      lmearr = np.zeros(self.imshape)
+          nedges = self.classes['abundance_edges']
+          medges = self.classes['mixing_edges']
+    
+          dim = len(self.classes)
+          lmearr = np.zeros(self.imshape)
+          
+          f = self.abumix_file
+          if not os.path.exists(f):
+              print("ERROR: raster file " + f + " does not exist!")
+              sys.exit()
+          aux = np.load(f)
+          abuarr = aux['abu'] # local abundances of each class
+          mixarr = aux['mix'] # local mixing values of each class
+    
+          # vectorized function for faster processing
+          def indexvalue(x, edges):
+              o = max([0] + [j for j, v in enumerate(edges[:-1]) if v < x])
+              return(o)
+          vindexvalue = np.vectorize(indexvalue, excluded=['edges'])
+    
+          for i, iclass in self.classes.iterrows():
+              # if edges are not empty
+              if (len(nedges[i])>0):
+                  # get abundance level
+                  aux = abuarr[:, :, i]
+                  aux[np.isnan(aux)] = 0
+                  abu = vindexvalue(x=aux, edges=nedges[i])
+                  # get mixing level
+                  aux = mixarr[:, :, i]
+                  aux[np.isnan(aux)] = 0
+                  mix = vindexvalue(x=aux, edges=medges[i])
+                  # produces a single digital (dim-digit) code
+                  j = dim - (i + 1)
+                  lmearr = lmearr + (10**(2*j + 1))*abu + (10**(2*j))*mix
+    
+          # sets out-regions to NAN
+          lmearr[self.roiarr == 0] = np.nan
+    
+          # reduces the number of lme classes by grouping them
+          self.lmearr = lmeRename(lmearr, dim)
+          
+          # saves geordG cases:
+          np.savez_compressed(self.lme_file, lme=self.lmearr)
+          
+          del abuarr
+          del mixarr
+          gc.collect()
       
-      f = self.abumix_file
-      if not os.path.exists(f):
-          print("ERROR: raster file " + f + " does not exist!")
-          sys.exit()
-      aux = np.load(f)
-      abuarr = aux['abu'] # local abundances of each class
-      mixarr = aux['mix'] # local mixing values of each class
-
-      # vectorized function for faster processing
-      def indexvalue(x, edges):
-          o = max([0] + [j for j, v in enumerate(edges[:-1]) if v < x])
-          return(o)
-      vindexvalue = np.vectorize(indexvalue, excluded=['edges'])
-
-      for i, iclass in self.classes.iterrows():
-          # if edges are not empty
-          if (len(nedges[i])>0):
-              # get abundance level
-              aux = abuarr[:, :, i]
-              aux[np.isnan(aux)] = 0
-              abu = vindexvalue(x=aux, edges=nedges[i])
-              # get mixing level
-              aux = mixarr[:, :, i]
-              aux[np.isnan(aux)] = 0
-              mix = vindexvalue(x=aux, edges=medges[i])
-              # produces a single digital (dim-digit) code
-              j = dim - (i + 1)
-              lmearr = lmearr + (10**(2*j + 1))*abu + (10**(2*j))*mix
-
-      # sets out-regions to NAN
-      lmearr[self.roiarr == 0] = np.nan
-
-      # reduces the number of lme classes by grouping them
-      self.lmearr = lmeRename(lmearr, dim)
-      
-      del abuarr
-      del mixarr
-      gc.collect()
-      
+      else:
+          aux = np.load(self.lme_file)
+          self.lmearr = aux['lme']
+          
       
   def plotLMELandscape(self, out_pth):
       """
@@ -543,7 +561,7 @@ class Landscape:
           plt.close()
       
       
-  def plotColocLandscape(self, out_pth, analyses, lims, do_plots):
+  def plotColocLandscape(self, redo, analyses, lims, do_plots):
       """
       Plots colocalization index landscape from raster
 
@@ -552,10 +570,12 @@ class Landscape:
       # # generates a list of comparisons for coloc
       # comps = [list(c) for c in list(combinations(self.classes.index, 2))]
       
+      out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
+      
       # if this analysis is already done, skip it
       fout = os.path.join(out_pth, self.sid +'_coloc_stats.csv')
       
-      if not os.path.exists(fout):
+      if (redo or not os.path.exists(fout)):
       
           # analyses
           df = analyses.copy()
@@ -607,7 +627,7 @@ class Landscape:
               gc.collect() 
       
       
-  def plotNNDistLandscape(self, out_pth, analyses, lims, do_plots):
+  def plotNNDistLandscape(self, redo, analyses, lims, do_plots):
       """
       Plots nearest neighbor distance index landscape from raster
 
@@ -616,10 +636,12 @@ class Landscape:
       # # generate list of comparisons for coloc
       # comps = [list(c) for c in list(permutations(self.classes.index, r=2))]
       
+      out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
+      
       # if this analysis is already done, skip it
       fout = os.path.join(out_pth, self.sid +'_nndist_stats.csv')
       
-      if not os.path.exists(fout):
+      if (redo or not os.path.exists(fout)):
       
           # analyses
           df = analyses.copy()
@@ -673,7 +695,7 @@ class Landscape:
               gc.collect()     
           
 
-  def plotRHFuncLandscape(self, out_pth, analyses, lims, do_plots):
+  def plotRHFuncLandscape(self, redo, analyses, lims, do_plots):
       """
       Plots Ripley`s H function score landscape from raster
 
@@ -682,10 +704,12 @@ class Landscape:
       # # generate list of comparisons for coloc
       # comps = [list(c) for c in list(product(self.classes.index, repeat=2))]
       
+      out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
+      
       # if this analysis is already done, skip it
       fout = os.path.join(out_pth, self.sid +'_rhfunc_stats.csv')
       
-      if not os.path.exists(fout):
+      if (redo or not os.path.exists(fout)):
           
           # analyses
           df = analyses.copy()
@@ -736,7 +760,7 @@ class Landscape:
               gc.collect()       
               
       
-  def plotGeOrdLandscape(self, out_pth, analyses, lims, do_plots):
+  def plotGeOrdLandscape(self, redo, analyses, lims, do_plots):
       """
       Plots Getis-Ord Z score landscape from raster
 
@@ -745,10 +769,12 @@ class Landscape:
       # generate list of comparisons
       # comps = list(self.classes.index)
       
+      out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
+      
       # if this analysis is already done, skip it
       fout = os.path.join(out_pth, self.sid +'_geordG_stats.csv')
       
-      if not os.path.exists(fout):
+      if (redo or not os.path.exists(fout)):
       
           # analyses
           df = analyses.copy()
@@ -808,7 +834,7 @@ class Landscape:
               gc.collect()      
   
 
-  def plotFactorCorrelations(self, out_pth, analyses, do_plots):
+  def plotFactorCorrelations(self, redo, analyses, do_plots):
 
       # from itertools import combinations, product, permutations
       # # generates a list of comparisons for coloc
@@ -818,143 +844,159 @@ class Landscape:
       # # generate list of comparisons for nndist
       # comps3 = [list(c) for c in list(permutations(self.classes.index, r=2))]
       
-      # analyses
-      df = analyses.copy()
-      iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0]
-      isnndist = ~df.loc[df['name'] == 'nndist']['drop'].values[0]
-      isrhfunc = ~df.loc[df['name'] == 'rhfunc']['drop'].values[0]
+      out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
       
-      cases = self.classes['class'].tolist()
+      fout = os.path.join(out_pth, self.sid +'_factor_correlations.csv')
       
-      if (iscoloc or isnndist or isrhfunc):
+      if (redo or not os.path.exists(fout)):
+      
+          # analyses
+          df = analyses.copy()
+          iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0]
+          isnndist = ~df.loc[df['name'] == 'nndist']['drop'].values[0]
+          isrhfunc = ~df.loc[df['name'] == 'rhfunc']['drop'].values[0]
           
-          # empty arrays for desider comparisons for each metric
-          coloc_comps = []
-          nndist_comps = []
-          rhfunc_comps = []
+          cases = self.classes['class'].tolist()
           
-          # get comparisons and reduced lists of cases
+          if (iscoloc or isnndist or isrhfunc):
+              
+              # empty arrays for desider comparisons for each metric
+              coloc_comps = []
+              nndist_comps = []
+              rhfunc_comps = []
+              
+              # get comparisons and reduced lists of cases
+              if iscoloc:
+                  # combinations of cases:
+                  comps = df.loc[df['name'] == 'coloc']['comps'].values[0]
+                  coloc_comps = [(cases.index(c[0]), 
+                                  cases.index(c[1])) for c in comps]
+              if isnndist:
+                  # combinations of cases:
+                  comps = df.loc[df['name'] == 'nndist']['comps'].values[0]
+                  nndist_comps = [(cases.index(c[0]), 
+                                   cases.index(c[1])) for c in comps]
+              if isrhfunc:
+                  # combinations of cases:
+                  comps = df.loc[df['name'] == 'rhfunc']['comps'].values[0]
+                  rhfunc_comps = [(cases.index(c[0]), 
+                                   cases.index(c[1])) for c in comps]
+            
+          corr = pd.DataFrame(columns = ['factor_i', 'comp_i', 
+                                         'factor_j', 'comp_j',
+                                         'pearson_cor', 'p_value:'])
+          colocarr = []
+          nndistarr = []
+          rhfuncarr = []
+          
           if iscoloc:
-              # combinations of cases:
-              comps = df.loc[df['name'] == 'coloc']['comps'].values[0]
-              coloc_comps = [(cases.index(c[0]), 
-                              cases.index(c[1])) for c in comps]
+              aux = np.load(self.coloc_file)
+              colocarr = aux['coloc']
           if isnndist:
-              # combinations of cases:
-              comps = df.loc[df['name'] == 'nndist']['comps'].values[0]
-              nndist_comps = [(cases.index(c[0]), 
-                               cases.index(c[1])) for c in comps]
+              aux = np.load(self.nndist_file)
+              nndistarr = aux['nndist']   
+              try:
+                  vmin = 0.25*round(np.nanquantile(nndistarr, .001)/0.25)
+                  vmax = 0.25*round(np.nanquantile(nndistarr, .999)/0.25)
+              except:
+                  vmin = -1
+                  vmax = 1
           if isrhfunc:
-              # combinations of cases:
-              comps = df.loc[df['name'] == 'rhfunc']['comps'].values[0]
-              rhfunc_comps = [(cases.index(c[0]), 
-                               cases.index(c[1])) for c in comps]
+              aux = np.load(self.rhfunc_file)
+              rhfuncarr = aux['rhfunc']
+              try:
+                  wmin = 0.25*round(np.nanquantile(rhfuncarr, .001)/0.25)
+                  wmax = 0.25*round(np.nanquantile(rhfuncarr, .999)/0.25)    
+              except:
+                  wmin = -1
+                  wmax = 1
         
-      corr = pd.DataFrame()
-      colocarr = []
-      nndistarr = []
-      rhfuncarr = []
-      
-      if iscoloc:
-          aux = np.load(self.coloc_file)
-          colocarr = aux['coloc']
-      if isnndist:
-          aux = np.load(self.nndist_file)
-          nndistarr = aux['nndist']   
-      if isrhfunc:
-          aux = np.load(self.rhfunc_file)
-          rhfuncarr = aux['rhfunc']
-          
-      vmin = 0.25*round(np.nanquantile(nndistarr, .001)/0.25)
-      vmax = 0.25*round(np.nanquantile(nndistarr, .999)/0.25)
-      wmin = 0.25*round(np.nanquantile(rhfuncarr, .001)/0.25)
-      wmax = 0.25*round(np.nanquantile(rhfuncarr, .999)/0.25)    
-    
-    
-      if iscoloc and isrhfunc:
-                      
-          # plot correlations between coloc and RHindex comparisons
-          ttl = 'Coloc - RHindex Correlations\nSample ID: ' + str(self.sid)
-          [fig, df] = plotFactorCorrelation(colocarr, 
-                                            coloc_comps, 
-                                            'Coloc', 
-                                            [0.0, 1.0],
-                                            rhfuncarr, 
-                                            rhfunc_comps, 
-                                            'RHindex', 
-                                            [wmin, wmax],
-                                            ttl, 
-                                            self.classes)
-          if do_plots:
-              fig.savefig(os.path.join(out_pth,
-                                       self.sid + '_coloc-rhindex_corr.png'),
-                                bbox_inches='tight', dpi=300)
-              plt.close()
+          if iscoloc and isrhfunc:
+                          
+              # plot correlations between coloc and RHindex comparisons
+              ttl = 'Coloc - RHindex Correlations\nSample ID: ' + str(self.sid)
+              [fig, df] = plotFactorCorrelation(colocarr, 
+                                                coloc_comps, 
+                                                'Coloc', 
+                                                [0.0, 1.0],
+                                                rhfuncarr, 
+                                                rhfunc_comps, 
+                                                'RHindex', 
+                                                [wmin, wmax],
+                                                ttl, 
+                                                self.classes,
+                                                do_plots)
+              if do_plots:
+                  fig.savefig(os.path.join(out_pth,
+                                           self.sid + \
+                                               '_coloc-rhindex_corr.png'),
+                                    bbox_inches='tight', dpi=300)
+                  plt.close()
+                  
+              # concatenate correlation tables
+              corr =  pd.concat([corr, df], ignore_index=True)
+                    
+          if iscoloc and isnndist:
               
-          # concatenate correlation tables
-          corr =  pd.concat([corr, df], ignore_index=True)
-                
-      if iscoloc and isnndist:
-          
-          # plot correlations between coloc and NNindex comparisons
-          ttl = 'Coloc - NNdist Correlations\nSample ID: ' + str(self.sid)
-          [fig, df] = plotFactorCorrelation(colocarr, 
-                                             coloc_comps, 
-                                            'coloc', 
-                                            [0.0, 1.0],
-                                            nndistarr, 
-                                            nndist_comps, 
-                                            'RHindex', 
-                                            [vmin, vmax],
-                                            ttl,
-                                            self.classes)
-          if do_plots:
-              fig.savefig(os.path.join(out_pth,
-                                       self.sid + '_coloc-nnindex_corr.png'),
-                          bbox_inches='tight', dpi=300)
-              plt.close()
+              # plot correlations between coloc and NNindex comparisons
+              ttl = 'Coloc - NNdist Correlations\nSample ID: ' + str(self.sid)
+              [fig, df] = plotFactorCorrelation(colocarr, 
+                                                 coloc_comps, 
+                                                'coloc', 
+                                                [0.0, 1.0],
+                                                nndistarr, 
+                                                nndist_comps, 
+                                                'RHindex', 
+                                                [vmin, vmax],
+                                                ttl,
+                                                self.classes,
+                                                do_plots)
+              if do_plots:
+                  fig.savefig(os.path.join(out_pth,
+                                           self.sid + \
+                                               '_coloc-nnindex_corr.png'),
+                              bbox_inches='tight', dpi=300)
+                  plt.close()
+                  
+              # concatenate correlation tables
+              corr =  pd.concat([corr, df], ignore_index=True)
+                    
+          if iscoloc and isnndist:
               
-          # concatenate correlation tables
-          corr =  pd.concat([corr, df], ignore_index=True)
-                
-      if iscoloc and isnndist:
+              # plot correlations between NNindex and RHindex comparisons
+              ttl = 'RHindex - NNdist Correlations\nSample ID: ' + \
+                  str(self.sid)
+              [fig, df] = plotFactorCorrelation(rhfuncarr, 
+                                                rhfunc_comps, 
+                                                'RHindex', 
+                                                [wmin, wmax],
+                                                nndistarr, 
+                                                nndist_comps, 
+                                                'NNdist', 
+                                                [vmin, vmax],
+                                                ttl,
+                                                self.classes,
+                                                do_plots)
+              if do_plots:
+                  fig.savefig(os.path.join(out_pth, 
+                                           self.sid + \
+                                               '_nnindex-rhindex_corr.png'),
+                              bbox_inches='tight', dpi=300)
+                  plt.close()
+                  
+              # concatenate correlation tables
+              corr =  pd.concat([corr, df], ignore_index=True)
           
-          # plot correlations between NNindex and RHindex comparisons
-          ttl = 'RHindex - NNdist Correlations\nSample ID: ' + str(self.sid)
-          [fig, df] = plotFactorCorrelation(rhfuncarr, 
-                                            rhfunc_comps, 
-                                            'RHindex', 
-                                            [wmin, wmax],
-                                            nndistarr, 
-                                            nndist_comps, 
-                                            'NNdist', 
-                                            [vmin, vmax],
-                                            ttl,
-                                            self.classes)
-          if do_plots:
-              fig.savefig(os.path.join(out_pth, 
-                                       self.sid +'_nnindex-rhindex_corr.png'),
-                          bbox_inches='tight', dpi=300)
-              plt.close()
-              
-          # concatenate correlation tables
-          corr =  pd.concat([corr, df], ignore_index=True)
-      
-      # saves correlations table
-      if (len(corr) > 0):
-          corr.to_csv(os.path.join(out_pth,
-                                   self.sid +'_factor_correlations.csv'), 
-                      sep=',', index=False, header=True)
-      
-      del colocarr 
-      del nndistarr 
-      del rhfuncarr 
-      gc.collect()
+          # saves correlations table
+          corr.to_csv(fout, sep=',', index=False, header=True)
+          
+          del colocarr 
+          del nndistarr 
+          del rhfuncarr 
+          gc.collect()
           
 
   def landscapeAnalysis(self, sample, samplcsv, do_plots):
-      
-      from myfunctions import mkdirs
       
       lme_pth = mkdirs(os.path.join(self.res_pth, 'lmes'))
       
@@ -1450,11 +1492,14 @@ def plotCaseLandscape(sid, raster, comps, shape,
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
+        
+        fig, ax = plt.subplots()
  
         # plots sample image
-        fig, ax = plt.subplots(dim, 2,
-                               figsize=(12*2, 0.5 + math.ceil(12*dim/ar)),
-                               facecolor='w', edgecolor='k')
+        if do_plots:
+            fig, ax = plt.subplots(dim, 2,
+                                   figsize=(12*2, 0.5 + math.ceil(12*dim/ar)),
+                                   facecolor='w', edgecolor='k')
 
         for i, comp in enumerate(comps):
 
@@ -1507,8 +1552,9 @@ def plotCaseLandscape(sid, raster, comps, shape,
         # for i in np.arange(len(comps)):
         #    ax[i, 1].set_ylim([0, 1.05*vmax])
 
-        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        if do_plots:
+            fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         
         # shift column 'class' to first position
         comp_metrics.insert(0, 'class', comp_metrics.pop('class'))
@@ -1633,11 +1679,14 @@ def plotCompLandscape(sid, raster, comps, shape,
         warnings.simplefilter('ignore')
         
         comp_metrics = pd.DataFrame()
+        
+        fig, ax = plt.subplots()
 
         # plots sample image
-        fig, ax = plt.subplots(dim, 2,
-                               figsize=(12*2, 0.5 + math.ceil(12*dim/ar)),
-                               facecolor='w', edgecolor='k')
+        if do_plots:
+            fig, ax = plt.subplots(dim, 2,
+                                   figsize=(12*2, 0.5 + math.ceil(12*dim/ar)),
+                                   facecolor='w', edgecolor='k')
 
         for i, comp in enumerate(comps):
 
@@ -1689,8 +1738,9 @@ def plotCompLandscape(sid, raster, comps, shape,
                 ax[i, 1].set_xticks(cticks[cticks <= vmax])
                 # ax[i, 1].set_yscale('log')
 
-        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        if do_plots:
+            fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         
         # shift column 'comp' to first position
         comp_metrics.insert(0, 'comp', comp_metrics.pop('comp'))
@@ -1964,79 +2014,83 @@ def plotViolins(tbl, grps, glab, signal, slab, fname):
 
 def plotFactorCorrelation(rasteri, comps1, tti, limsi,
                           rasterj, comps2, ttj, limsj,
-                          ttl, classes):
+                          ttl, classes, do_plots):
 
     import seaborn as sns
     import scipy.stats as sts
-
-    nc = len(comps1)*len(comps2)
-    ncols = int(np.ceil(np.sqrt(nc)))
-
-    fig, ax = plt.subplots(int(np.ceil(nc/ncols)), ncols,
-                           figsize=(ncols*(12), (nc/ncols)*(12)),
-                           facecolor='w', edgecolor='k')
-    shp = ax.shape
+    import warnings
     
     df = pd.DataFrame()
+    fig, ax = plt.subplots()
+
+    # plots sample image
+    if do_plots:
+        nc = len(comps1)*len(comps2)
+        ncols = int(np.ceil(np.sqrt(nc)))
+    
+        fig, ax = plt.subplots(int(np.ceil(nc/ncols)), ncols,
+                               figsize=(ncols*(12), (nc/ncols)*(12)),
+                               facecolor='w', edgecolor='k')
+        shp = ax.shape
 
     k = 0
     for i, compi in enumerate(comps1):
         auxi = rasteri[:, :, i].ravel()
         for j, compj in enumerate(comps2):
-            ij = np.unravel_index(k, shp)
             auxj = rasterj[:, :, j].ravel()
-
             aux = np.stack((auxi, auxj)).T
             aux = aux[~np.isnan(aux).any(axis=1)]
             aux = aux[np.random.randint(len(aux),
                                         size=min(1000, len(aux))), :]
-            
-            compi_lab = classes.iloc[compi[0]].class_name + \
-                ':' + classes.iloc[compi[1]].class_name
+            if (len(aux) > 5):
                 
-            compj_lab = classes.iloc[compj[0]].class_name + \
-                ':' + classes.iloc[compj[1]].class_name 
+                compi_lab = classes.iloc[compi[0]].class_name + \
+                    ':' + classes.iloc[compi[1]].class_name
+                compj_lab = classes.iloc[compj[0]].class_name + \
+                    ':' + classes.iloc[compj[1]].class_name 
+                    
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore')
+                    correlation, p_value = sts.pearsonr(aux[:, 0], aux[:, 1])
+                star = 'NS'
+                if (p_value < 0.05):
+                    star = '*'
+                if (p_value < 0.01):
+                    star = '**'
+                if (p_value < 0.001):
+                    star = '***'
+                coefs = 'C = %.4f; p-value = %.2e' % (correlation, p_value)
+                
+                dfij = pd.DataFrame({'factor_i': [tti], 
+                                     'comp_i': [compi_lab],
+                                     'factor_j': [ttj],
+                                     'comp_j': [compj_lab],
+                                     'pearson_cor': [correlation],
+                                     'p_value:': [p_value]})
+                df = pd.concat([df, dfij], ignore_index=True)
 
-            xlab = tti + '(' + compi_lab + ')'
-            ylab = ttj + '(' + compi_lab + ')'
-
-            sns.axes_style("whitegrid")
-            sns.regplot(x=aux[:, 0], y=aux[:, 1],
-                        ax=ax[np.unravel_index(k, shp)],
-                        scatter_kws={"color": "black"},
-                        line_kws={"color": "red"})
-
-            ax[ij].set_xlabel(xlab)
-            ax[ij].set_ylabel(ylab)
-            ax[ij].plot(np.linspace(limsi[0], limsi[1], 10),
-                        np.linspace(limsj[0], limsj[1], 10),
-                        color='k', linestyle='dashed')
-            ax[ij].set_xlim(limsi[0], limsi[1])
-            ax[ij].set_ylim(limsj[0], limsj[1])
-
-            correlation, p_value = sts.pearsonr(aux[:, 0], aux[:, 1])
-            star = 'NS'
-            if (p_value < 0.05):
-                star = '*'
-            if (p_value < 0.01):
-                star = '**'
-            if (p_value < 0.001):
-                star = '***'
-            coefs = 'C = %.4f; p-value = %.2e' % (correlation, p_value)
-            ax[ij].set_title(coefs + ' (' + star + ')')
-            
-            dfij = pd.DataFrame({'factor_i': [tti], 
-                                 'comp_i': [compi_lab],
-                                 'factor_j': [ttj],
-                                 'comp_j': [compj_lab],
-                                 'pearson_cor': [correlation],
-                                 'p_value:': [p_value]})
-            df = pd.concat([df, dfij], ignore_index=True)
-            k = k + 1
-
-    fig.subplots_adjust(hspace=0.4)
-    fig.suptitle(ttl, fontsize=24, y=.95)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+                if do_plots:
+                    ij = np.unravel_index(k, shp)
+                    sns.axes_style("whitegrid")
+                    sns.regplot(x=aux[:, 0], y=aux[:, 1],
+                                ax=ax[np.unravel_index(k, shp)],
+                                scatter_kws={"color": "black"},
+                                line_kws={"color": "red"})
+                    ax[ij].set_xlabel(tti + '(' + compi_lab + ')')
+                    ax[ij].set_ylabel(ttj + '(' + compi_lab + ')')
+                    ax[ij].plot(np.linspace(limsi[0], limsi[1], 10),
+                                np.linspace(limsj[0], limsj[1], 10),
+                                color='k', linestyle='dashed')
+                    ax[ij].set_xlim(limsi[0], limsi[1])
+                    ax[ij].set_ylim(limsj[0], limsj[1])
+                    ax[ij].set_title(coefs + ' (' + star + ')')
+                    
+                k = k + 1
+ 
+    if do_plots:
+        fig.subplots_adjust(hspace=0.4)
+        fig.suptitle(ttl, fontsize=24, y=.95)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     return([fig, df])
 
@@ -2049,13 +2103,14 @@ def main(args):
 
     """
     # %% debug starts
-    debug = True
+    debug = False
+
     
     if debug:
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'BE_set_1.csv')
+        argsfile = os.path.join(main_pth, 'CRC_set.csv')
         REDO = False
         GRPH = False
         CASE = 0
@@ -2098,31 +2153,28 @@ def main(args):
     
     # if processed landscape do not exist
     if (GO):
-        
-        from myfunctions import mkdirs
-        
+          
         print( msg + " >>> processing..." )
     
         # %% STEP 1: loading data
         land = Landscape(sample, study)
 
         # %% STEP 2: calculate kernel-level space stats
-        land.getSpaceStats(study.analyses)
+        land.getSpaceStats(REDO, study.analyses)
         
         # %% STEP 3: prints space stats
-        fact_pth = mkdirs(os.path.join(land.res_pth, 'space_factors'))
-        land.plotColocLandscape(fact_pth, study.analyses, [0.0 ,1.0], GRPH)
-        land.plotNNDistLandscape(fact_pth, study.analyses, [-1, 1], GRPH)
-        land.plotRHFuncLandscape(fact_pth, study.analyses, [-1, 1], GRPH)
-        land.plotGeOrdLandscape(fact_pth, study.analyses, [-3, 3], GRPH)
-        land.plotFactorCorrelations(fact_pth, study.analyses, GRPH)
+        land.plotColocLandscape(REDO, study.analyses, [0.0 ,1.0], GRPH)
+        land.plotNNDistLandscape(REDO, study.analyses, [-1, 1], GRPH)
+        land.plotRHFuncLandscape(REDO,  study.analyses, [-1, 1], GRPH)
+        land.plotGeOrdLandscape(REDO, study.analyses, [-3, 3], GRPH)
+        land.plotFactorCorrelations(REDO, study.analyses, GRPH)
         
         # saves a proxy table to flag end of process (in case next step is 
         # commented and don't want to redo all analysis up to here)
-        #sample.to_csv(samplcsv, sep=',', index=False, header=True)
+        sample.to_csv(samplcsv, sep=',', index=False, header=True)
         
         # %% STEP 4: assigns LME values to landscape
-        land.loadLMELandscape()
+        land.loadLMELandscape(REDO)
         
         # % STEP 5: pylandstats analysis
         # Regular metrics can be computed at the patch, class and
