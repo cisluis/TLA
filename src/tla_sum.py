@@ -91,34 +91,34 @@ class Study:
                 # colocalization features
                 f = os.path.join(sfs_pth, sid +'_coloc_stats.csv')
                 if os.path.exists(f):
-                    aux = loadToWide(f, sid, 'coloc')
+                    aux = loadToWide(f, sid, 'coloc', 'comp')
                     self.coloc_stats = pd.concat([self.coloc_stats, aux],
                                                  ignore_index=True)
                     
                 # NN distance features
                 f = os.path.join(sfs_pth, sid +'_nndist_stats.csv')
                 if os.path.exists(f):
-                    aux = loadToWide(f, sid, 'nndist')
+                    aux = loadToWide(f, sid, 'nndist', 'comp')
                     self.nndist_stats = pd.concat([self.nndist_stats, aux],
                                                   ignore_index=True)
                     
                 # Ripley's H features
                 f = os.path.join(sfs_pth, sid +'_rhfunc_stats.csv')
                 if os.path.exists(f):
-                    aux = loadToWide(f, sid, 'rhfunc')
+                    aux = loadToWide(f, sid, 'rhfunc', 'comp')
                     self.rhfunc_stats = pd.concat([self.rhfunc_stats, aux],
                                                   ignore_index=True)
                     
                 # Getis-Ord features 
-                f = os.path.join(sfs_pth, sid +'_georG_stats.csv')
+                f = os.path.join(sfs_pth, sid +'_geordG_stats.csv')
                 if os.path.exists(f):
-                    aux = loadToWide(f, sid, 'georG')
+                    aux = loadToWide(f, sid, 'geordG', 'class')
                     self.geordG_stats = pd.concat([self.geordG_stats, aux],
                                                  ignore_index=True)
             
             
       # saves study tables
-      pth = mkdirs(self.dat_pth, 'results', 'lmes')      
+      pth = mkdirs(os.path.join(self.dat_pth, 'results', 'lmes'))     
       f = os.path.join(pth, self.name + '_lme_tbl.csv')      
       self.lme_stats.to_csv(f, index=False, header=True)      
       
@@ -138,21 +138,21 @@ class Study:
           
 # %% Private Functions
 
-def loadToWide(f, sid, metric):
+def loadToWide(f, sid, metric, comp):
     
     covs =["patch_density", "largest_patch_index", 
            "edge_density", "landscape_shape_index", 
            "entropy", "shannon_diversity_index", "contagion"]
-    cols = ["comp"] + covs
+    cols = [comp] + covs
     
     tbl = pd.read_csv(f)[cols]
     tbl.index=[0]*len(tbl)
     dfout =  pd.DataFrame({'sample_ID': [sid]})
     
     for c in covs:
-        aux = tbl[['comp', c]].copy()
-        aux['comp'] = aux['comp'].str.replace('::','_')
-        aux['cc'] = metric + "_" + aux['comp'].astype(str) + "_" + c
+        aux = tbl[[comp, c]].copy()
+        aux[comp] = aux[comp].str.replace('::','_')
+        aux['cc'] = metric + "_" + aux[comp].astype(str) + "_" + c
         auy = pd.pivot(aux, 
                        index=None,
                        columns='cc', 
@@ -176,7 +176,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'CRC_set.csv')
+        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)

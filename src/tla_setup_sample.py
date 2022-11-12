@@ -27,6 +27,7 @@ import math
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from PIL import Image
 from argparse import ArgumentParser
 
@@ -424,7 +425,7 @@ class Sample:
               [_, _, z] = KDE(aux, self.imshape, self.bw)
     
               # generate a binary mask
-              mask = arrayLevelMask(z, denthr, np.pi*(self.bw)*(self.bw))
+              mask = arrayLevelMask(z, denthr, self.bw)
     
               # tag masked out cells
               ii = np.ones(len(data))
@@ -442,11 +443,13 @@ class Sample:
 
   def roi_mask(self, redo):
       
+      from myfunctions import filterCells
+      
       fout = self.roi_file
       
       if redo or not os.path.exists(fout):
       
-          from myfunctions import kdeMask, filterCells
+          from myfunctions import kdeMask
           
           # gets a mask for the region that has cells inside
           [_, self.roiarr] = kdeMask(self.cell_data, self.imshape, self.bw)
@@ -510,6 +513,7 @@ class Sample:
           
           aux = np.load(fout)
           kdearr = aux['kde']
+          del aux 
    
       # clean memory
       gc.collect()
@@ -832,7 +836,11 @@ class Sample:
                                 for k, r in enumerate(self.rs):
                                     rk = ripleys_K_biv(rcx, n[:, :, i, k], 
                                                        rcy, n[:, :, j, k])
-                                    rk = (np.sqrt(rk/np.pi) - r)/r
+                                    # Old definition:
+                                    # rk = (np.sqrt(rk/np.pi) - r)/r
+                                    # New definition, should be easier to interpret
+                                    rk = np.log10(np.sqrt(rk/np.pi)/r)
+                                    
                                     rhfuncarr[i, j, k, 1] = rk
                                     del rk
                                     
@@ -1344,10 +1352,10 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'CRC_set.csv')
+        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
         REDO = False
         GRPH = False
-        CASE = 0
+        CASE = 114
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -1390,14 +1398,30 @@ def main(args):
         
         # STEP 4: calculate a ROI mask for region with cells
         sample.roi_mask(REDO)
-        
+        if debug:
+            plt.figure()
+            sns.scatterplot(data=sample.cell_data, s=.1,
+                            x='x', y='y', hue='class')
+            plt.figure()
+            plt.imshow(sample.roiarr)
+            
         # STEP 5: create raster images from density KDE profiles
         kdearr = sample.kde_mask(REDO)
+        if debug:
+            for c, clss in sample.classes.iterrows():
+                plt.figure()
+                plt.imshow(kdearr[:,:,c])
         
         # STEP 6: create raster images from cell mixing profiles
         abuarr, mixarr = sample.abumix_mask(REDO, kdearr)
         del kdearr
         gc.collect()
+        if debug:
+            for c, clss in sample.classes.iterrows():
+                plt.figure()
+                plt.imshow(abuarr[:,:,c])
+                plt.figure()
+                plt.imshow(mixarr[:,:,c])
         
         # STEP 7: calculates quadrat populations for coarse graining
         sample.quadrat_stats(abuarr, mixarr)

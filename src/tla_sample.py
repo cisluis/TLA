@@ -15,18 +15,17 @@ import os
 import gc
 import sys
 import math
+# import pickle
 
 import pandas as pd
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pylandstats as pls
-# import pickle
 
 from skimage import io
 from PIL import Image
 from ast import literal_eval
-
 from argparse import ArgumentParser
 
 from myfunctions import mkdirs
@@ -63,16 +62,21 @@ class Study:
           sys.exit()
       self.samples = pd.read_csv(f)
       self.samples.fillna('', inplace=True)
-     
+      
+      # scale parameters
+      self.factor = 1.0
+      if 'factor' in study:
+          self.factor = study['factor']
+      self.scale = study['scale']/self.factor
+      self.units = study['units']
+
       # the size of quadrats and subquadrats
-      self.binsiz = int((study['binsiz']))
+      self.binsiz = int(10*np.ceil((study['binsiz']/self.scale)/10))
       self.subbinsiz = int(self.binsiz/5)
-    
+
       # bandwidth size for convolutions is half the quadrat size
       self.kernel = int(self.binsiz/2)
       self.subkernel = int(self.subbinsiz/2)
-      self.scale = study['scale']
-      self.units = study['units']
       
       # creates samples table for output
       self.samples_out = pd.DataFrame()
@@ -157,7 +161,7 @@ class Landscape:
       # loads blob mask
       msk = None
       if (sample['mask_file'] != ''):
-          msk = np.load(os.path.join(dat_pth, sample['mask_file']))['mask']
+          msk = np.load(os.path.join(dat_pth, sample['mask_file']))['roi']
       self.msk = msk
           
       # pylandstats landscape object
@@ -611,17 +615,17 @@ class Landscape:
                               bbox_inches='tight', dpi=300)
                   plt.close()
                   
-                  # plot correlations between comparisons
-                  ttl = 'Colocalization index Correlations\nSample ID: ' + \
-                      str(self.sid)
-                  fig = plotCompCorrelations(colocarr, 
-                                             coloc_comps, 
-                                             ttl, 
-                                             lims)
-                  plt.savefig(os.path.join(out_pth,
-                                           self.sid +'_coloc_correlations.png'),
-                              bbox_inches='tight', dpi=300)
-                  plt.close()
+                  if (len(coloc_comps)>1):
+                      # plot correlations between comparisons
+                      ttl = 'Colocalization index Correlations\n' + \
+                          'Sample ID: ' + str(self.sid)
+                      fig = plotCompCorrelations(colocarr, coloc_comps, 
+                                                 ttl, lims)
+                      plt.savefig(os.path.join(out_pth,
+                                               self.sid + \
+                                                   '_coloc_correlations.png'),
+                                  bbox_inches='tight', dpi=300)
+                      plt.close()
                   
               del colocarr
               gc.collect() 
@@ -654,7 +658,7 @@ class Landscape:
               
               # combinations of cases:
               nndist_comps = df.loc[df['name'] == 'nndist']['comps'].values[0]
-    
+              
               # plots array of landscapes for these comparisons
               [fig, metrics] = plotCompLandscape(self.sid, 
                                                  nndistarr, 
@@ -677,19 +681,21 @@ class Landscape:
                                            self.sid +'_nndist_landscape.png'),
                               bbox_inches='tight', dpi=300)
                   plt.close()
-      
-                  # plot correlations between comparisons
-                  ttl = 'Nearest Neighbor Dist index Correlations\nSample ID: ' + \
-                      str(self.sid)
-                      
-                  fig = plotCompCorrelations(nndistarr, 
-                                             nndist_comps,
-                                             ttl, 
-                                             lims)
-                  plt.savefig(os.path.join(out_pth, 
-                                           self.sid +'_nndist_correlations.png'),
-                              bbox_inches='tight', dpi=300)
-                  plt.close()
+                  
+                  if (len(nndist_comps)>1):
+                      # plot correlations between comparisons
+                      ttl = 'Nearest Neighbor Dist index Correlations\n' + \
+                          'Sample ID: ' + str(self.sid)
+                          
+                      fig = plotCompCorrelations(nndistarr, 
+                                                 nndist_comps,
+                                                 ttl, 
+                                                 lims)
+                      plt.savefig(os.path.join(out_pth, 
+                                               self.sid + \
+                                                   '_nndist_correlations.png'),
+                                  bbox_inches='tight', dpi=300)
+                      plt.close()
                   
               del nndistarr
               gc.collect()     
@@ -746,15 +752,17 @@ class Landscape:
                               bbox_inches='tight', dpi=300)
                   plt.close()
                   
-                  # plot correlations between comparisons
-                  ttl = 'Ripley`s H function score Correlations\nSample ID: ' + \
-                         str(self.sid)
-                  fig = plotCompCorrelations(rhfuncarr, rhfunc_comps, 
-                                             ttl, lims)
-                  plt.savefig(os.path.join(out_pth,
-                                           self.sid +'_rhfunc_correlations.png'),
-                              bbox_inches='tight', dpi=300)
-                  plt.close()
+                  if (len(rhfunc_comps)>1):
+                      # plot correlations between comparisons
+                      ttl = 'Ripley`s H function score Correlations\n' + \
+                          'Sample ID: ' + str(self.sid)
+                      fig = plotCompCorrelations(rhfuncarr, rhfunc_comps, 
+                                                 ttl, lims)
+                      plt.savefig(os.path.join(out_pth,
+                                               self.sid + \
+                                                   '_rhfunc_correlations.png'),
+                                  bbox_inches='tight', dpi=300)
+                      plt.close()
                   
               del rhfuncarr
               gc.collect()       
@@ -1041,8 +1049,8 @@ class Landscape:
           # plot class metrics histograms
           _ = plotClassHists(self.sid, class_metrics, lme_pth)
           
-      # plot LME landscape
-      self.plotLMELandscape(lme_pth)
+          # plot LME landscape
+          self.plotLMELandscape(lme_pth)
  
       # get sample stats
       sample_out = getSampleStats(sample, self.plsobj, adj_pairs,
@@ -1443,10 +1451,11 @@ def lmeAdjacencyHeatmap(sid, adj_pairs, res_pth ):
                               'shrink': 0.87,
                               'pad': 0.01},
                     xticklabels = 1, yticklabels = 1)
-    f.set(title='LME adjacenty odds F',
+    f.set(title='LME adjacenty odds: F',
           xlabel=None, ylabel=None);
     f.invert_yaxis()
     f.set_aspect('equal')
+    plt.yticks(rotation=0)
     f.figure.savefig(os.path.join(res_pth, 
                                   sid +'_lme_adjacency_odds.png'),
                      bbox_inches='tight', dpi=300)
@@ -1669,7 +1678,8 @@ def plotCompLandscape(sid, raster, comps, shape,
     
     [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
     
-    vmax = np.nanquantile(raster, 0.99) + 2*bini
+    #vmax = np.nanquantile(raster, 0.99) + 2*bini
+    vmax = lims[1]
     bbticks = bticks[bticks <= vmax] 
     
     cmap = plt.get_cmap('jet', len(bbticks))
@@ -1711,7 +1721,7 @@ def plotCompLandscape(sid, raster, comps, shape,
 
             if do_plots:
                 im = plotRGB(ax[i, 0], auy, units,
-                             cedges, redges, xedges, yedges, fontsiz=18,
+                             cedges, redges, xedges, yedges, fontsiz=12,
                              vmin=lims[0], vmax=vmax, cmap=cmap)
     
                 cbar = plt.colorbar(im, ax=ax[i, 0], fraction=0.046, pad=0.04)
@@ -1754,54 +1764,70 @@ def plotCompCorrelations(raster, comps, ttl, lims):
     import seaborn as sns
     import scipy.stats as sts
 
-    nc = len(comps)*(len(comps)-1)/2
+    nc = 1
+    if len(comps)>1:
+        nc = len(comps)*(len(comps)-1)/2
     ncols = int(np.ceil(np.sqrt(nc)))
 
     fig, ax = plt.subplots(int(np.ceil(nc/ncols)), ncols,
                            figsize=(ncols*12, (nc/ncols)*12),
                            facecolor='w', edgecolor='k')
-    shp = ax.shape
-    k = 0
-    for i, compi in enumerate(comps):
-        auxi = raster[:, :, i].ravel()
-        for j, compj in enumerate(comps):
-            if j > i:
-                ij = np.unravel_index(k, shp)
-                auxj = raster[:, :, j].ravel()
+    
+    def corij(auxi, auxj, ax, compi, compj, lims):
+        
+        aux = np.stack((auxi, auxj)).T
+        aux = aux[~np.isnan(aux).any(axis=1)]
+        aux = aux[np.random.randint(len(aux),
+                                    size=min(1000, len(aux))), :]
 
-                aux = np.stack((auxi, auxj)).T
-                aux = aux[~np.isnan(aux).any(axis=1)]
-                aux = aux[np.random.randint(len(aux),
-                                            size=min(1000, len(aux))), :]
+        xlab = '(' + compi[0] + ':' + compi[1] + ')'
+        ylab = '(' + compj[0] + ':' + compj[1] + ')'
 
-                xlab = '(' + compi[0] + ':' + compi[1] + ')'
-                ylab = '(' + compj[0] + ':' + compj[1] + ')'
+        sns.axes_style("whitegrid")
+        sns.regplot(x=aux[:, 0], y=aux[:, 1],
+                    ax=ax,
+                    scatter_kws={"color": "black"},
+                    line_kws={"color": "red"})
 
-                sns.axes_style("whitegrid")
-                sns.regplot(x=aux[:, 0], y=aux[:, 1],
-                            ax=ax[np.unravel_index(k, shp)],
-                            scatter_kws={"color": "black"},
-                            line_kws={"color": "red"})
+        ax.set_xlabel(xlab)
+        ax.set_ylabel(ylab)
+        ax.plot(np.linspace(lims[0], lims[1], 10),
+                    np.linspace(lims[0], lims[1], 10),
+                    color='k', linestyle='dashed')
+        ax.set_xlim(lims[0], lims[1])
+        ax.set_ylim(lims[0], lims[1])
 
-                ax[ij].set_xlabel(xlab)
-                ax[ij].set_ylabel(ylab)
-                ax[ij].plot(np.linspace(lims[0], lims[1], 10),
-                            np.linspace(lims[0], lims[1], 10),
-                            color='k', linestyle='dashed')
-                ax[ij].set_xlim(lims[0], lims[1])
-                ax[ij].set_ylim(lims[0], lims[1])
-
-                correlation, p_value = sts.pearsonr(aux[:, 0], aux[:, 1])
-                star = 'NS'
-                if (p_value < 0.05):
-                    star = '*'
-                if (p_value < 0.01):
-                    star = '**'
-                if (p_value < 0.001):
-                    star = '***'
-                coefs = 'C = %.4f; p-value = %.2e' % (correlation, p_value)
-                ax[ij].set_title(coefs + ' (' + star + ')')
-                k = k+1
+        correlation, p_value = sts.pearsonr(aux[:, 0], aux[:, 1])
+        star = 'NS'
+        if (p_value < 0.05):
+            star = '*'
+        if (p_value < 0.01):
+            star = '**'
+        if (p_value < 0.001):
+            star = '***'
+        coefs = 'C = %.4f; p-value = %.2e' % (correlation, p_value)
+        ax.set_title(coefs + ' (' + star + ')')
+        
+        
+    if (nc > 1):
+        shp = ax.shape
+        k = 0
+        for i, compi in enumerate(comps):
+            auxi = raster[:, :, i].ravel()
+            for j, compj in enumerate(comps):
+                if j > i:
+                    auxj = raster[:, :, j].ravel()
+                    corij(auxi, auxj, 
+                          ax[np.unravel_index(k, shp)], 
+                          compi, compj, lims)
+                    k = k+1
+    else:
+        auxi = raster[:, :, 0].ravel()
+        auxj = raster[:, :, 1].ravel()
+        corij(auxi, auxj, 
+              ax, 
+              comps[0], comps[1], lims)
+        
 
     fig.subplots_adjust(hspace=0.4)
     fig.suptitle(ttl, fontsize=24, y=.95)
@@ -1948,7 +1974,7 @@ def plotClassHists(sid, df, res_pth):
     axs[0].set_title('Proportion of landscape')
     labs = ['{0} - {1:1.2f} %'.format(i, j) for i, j in zip(lmes, f)]
     axs[0].legend(patches, labs, loc='center right',
-                  bbox_to_anchor=(0, 0.5), fontsize=8)
+                  bbox_to_anchor=(0, 0.5), fontsize=12)
 
     y = df.number_of_patches
     f = 100.*y/y.sum()
@@ -2110,10 +2136,10 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'CRC_set.csv')
+        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
         REDO = False
         GRPH = False
-        CASE = 0
+        CASE = 114
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -2147,9 +2173,9 @@ def main(args):
     # landpkl = os.path.join(sample['res_pth'], sid +'_landscape.pkl')
     samplcsv = os.path.join(sample['res_pth'], sid +'_lme_tbl.csv')
     
-    GO = False
-    if (sample['num_cells'] > 10000):
-        GO = (REDO or (not os.path.exists(samplcsv)))
+    #GO = False
+    #if (sample['num_cells'] > 10000):
+    GO = (REDO or (not os.path.exists(samplcsv)))
     
     # if processed landscape do not exist
     if (GO):
@@ -2164,9 +2190,9 @@ def main(args):
         
         # %% STEP 3: prints space stats
         land.plotColocLandscape(REDO, study.analyses, [0.0 ,1.0], GRPH)
-        land.plotNNDistLandscape(REDO, study.analyses, [-1, 1], GRPH)
-        land.plotRHFuncLandscape(REDO,  study.analyses, [-1, 1], GRPH)
-        land.plotGeOrdLandscape(REDO, study.analyses, [-3, 3], GRPH)
+        land.plotNNDistLandscape(REDO, study.analyses, [-1.5, 1.5], GRPH)
+        land.plotRHFuncLandscape(REDO,  study.analyses, [-1.0, 1.0], GRPH)
+        land.plotGeOrdLandscape(REDO, study.analyses, [-5, 5], GRPH)
         land.plotFactorCorrelations(REDO, study.analyses, GRPH)
         
         # saves a proxy table to flag end of process (in case next step is 

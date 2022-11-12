@@ -192,7 +192,7 @@ def arrayLevelMask(z, th, rmin, fill_holes=True):
     ----------
     - z: (numpy array) array of float values
     - th: (float) threshold value; z[z<th] = 0
-    - minsize: (float) regions smaller than minsize are filtered out
+    - rmin: (float) regions with r<rmin are filtered out
     - fill_holes: (bool) if true, holes are fillled out
 
     """
