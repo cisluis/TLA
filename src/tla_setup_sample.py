@@ -179,12 +179,13 @@ class Sample:
       # creates raster folder and add path to df
       f = mkdirs(os.path.join(study.dat_path, 'rasters', self.sid))
       pth = 'rasters/' + self.sid + '/'
-      if (self.tbl.mask_file == ''):    
+      fmsk = os.path.join(study.raw_path, self.tbl.mask_file)
+      if (self.tbl.mask_file == '' or not os.path.exists(fmsk)):    
           self.raw_mkfile = ''
           self.tbl['mask_file']= ''
           self.ismk = False
       else:
-          self.raw_mkfile = os.path.join(study.raw_path, self.tbl.mask_file)
+          self.raw_mkfile = fmsk
           self.tbl['mask_file'] = pth + self.sid +'_mask.npz'
           self.mask_file = os.path.join(f, self.sid + '_mask.npz')
           self.ismk = True
@@ -1352,10 +1353,10 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
+        argsfile = os.path.join(main_pth, 'test_set.csv')
         REDO = False
         GRPH = False
-        CASE = 114
+        CASE = 0
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)

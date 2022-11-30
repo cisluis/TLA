@@ -23,7 +23,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pylandstats as pls
 
-from skimage import io
+# from skimage import io
 from PIL import Image
 from ast import literal_eval
 from argparse import ArgumentParser
@@ -152,17 +152,19 @@ class Landscape:
       self.lme_file = os.path.join(pth, self.sid + '_lme.npz')  
       self.lmearr = []
       
-      # slide image
-      img = None
-      if (sample['image_file'] != ''):
-          img = io.imread(os.path.join(dat_pth, sample['image_file']))
-      self.img = img
+      # # slide image
+      # img = None
+      # f = os.path.join(dat_pth, sample['image_file'])
+      # if (sample['image_file'] != '' and os.path.exists(f)):
+      #     img = io.imread(f)
+      # self.img = img
 
-      # loads blob mask
-      msk = None
-      if (sample['mask_file'] != ''):
-          msk = np.load(os.path.join(dat_pth, sample['mask_file']))['roi']
-      self.msk = msk
+      # # loads blob mask
+      # msk = None
+      # f = os.path.join(dat_pth, sample['mask_file'])
+      # if (sample['mask_file'] != '' and os.path.exists(f)):
+      #     msk = np.load()['roi']
+      # self.msk = msk
           
       # pylandstats landscape object
       self.plsobj = []
@@ -2136,10 +2138,10 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
+        argsfile = os.path.join(main_pth, 'test_set.csv')
         REDO = False
         GRPH = False
-        CASE = 114
+        CASE = 0
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
