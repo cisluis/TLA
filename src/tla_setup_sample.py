@@ -24,6 +24,7 @@ import os
 import sys
 import gc
 import math
+import warnings
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -182,7 +183,7 @@ class Sample:
       fmsk = os.path.join(study.raw_path, self.tbl.mask_file)
       if (self.tbl.mask_file == '' or not os.path.exists(fmsk)):    
           self.raw_mkfile = ''
-          self.tbl['mask_file']= ''
+          self.mask_file = ''
           self.ismk = False
       else:
           self.raw_mkfile = fmsk
@@ -191,6 +192,7 @@ class Sample:
           self.ismk = True
             
       # raster file names
+      self.raster_folder = f
       self.tbl['roi_file'] =  pth + self.sid + '_roi.npz'
       self.roi_file = os.path.join(f, self.sid + '_roi.npz')
       self.tbl['kde_file'] = pth +  self.sid + '_kde.npz'
@@ -276,11 +278,21 @@ class Sample:
                                preserve_range=True)).astype('uint8')
 
       # limits for image cropping
-      rmin = np.nanmax([0, ymin - edge])
-      cmin = np.nanmax([0, xmin - edge])
-      rmax = np.nanmin([imshape[0] - 1, ymax + edge])
-      cmax = np.nanmin([imshape[1] - 1, xmax + edge])
-      imshape = [int(rmax - rmin + 1), int(cmax - cmin + 1)]
+      with warnings.catch_warnings():
+          warnings.simplefilter("ignore")
+          rmin = np.nanmax([0, ymin - edge])
+          cmin = np.nanmax([0, xmin - edge])
+          rmax = np.nanmin([imshape[0] - 1, ymax + edge])
+          cmax = np.nanmin([imshape[1] - 1, xmax + edge])
+      
+      dr = rmax - rmin
+      dc = cmax - cmin
+      if (np.isnan(dr) or np.isnan(dc)):
+          print("ERROR: data file " + self.raw_cell_data_file + \
+                " is an empty landscape!")
+          sys.exit()
+          
+      imshape = [int(dr + 1), int(dc + 1)]
 
       # shifts coordinates
       cell_data = xyShift(cxy, imshape, [rmin, cmin], self.scale)
@@ -839,9 +851,12 @@ class Sample:
                                                        rcy, n[:, :, j, k])
                                     # Old definition:
                                     # rk = (np.sqrt(rk/np.pi) - r)/r
-                                    # New definition, should be easier to interpret
-                                    rk = np.log10(np.sqrt(rk/np.pi)/r)
-                                    
+                                    # New definition, easier to interpret
+                                    if (rk > 0):
+                                        rk = np.log10(np.sqrt(rk/np.pi)/r)
+                                    else:
+                                        rk = np.nan
+                                        
                                     rhfuncarr[i, j, k, 1] = rk
                                     del rk
                                     
@@ -1131,7 +1146,7 @@ class Sample:
           ax[1, 0].set_title('Cell locations', fontsize=18, y=1.02)
           ax[1, 0].legend(labels=self.classes.class_name,
                           loc='best',
-                          markerscale=10, fontsize=16,
+                          markerscale=5, fontsize=16,
                           facecolor='w', edgecolor='k')
 
           # plots kde levels
@@ -1143,6 +1158,65 @@ class Sample:
           fig.suptitle('Sample ID: ' + str(self.sid), fontsize=24, y=.95)
           fig.savefig(os.path.join(self.res_pth, 
                                    self.sid + '_landscape.png'),
+                      bbox_inches='tight', dpi=300)
+          plt.close()
+          
+  def plot_landscape_simple(self):
+      """
+      Produces simple plot of landscape
+
+      """
+      from myfunctions import kdeLevels, landscapeLevels
+      from myfunctions import landscapeScatter, plotEdges
+
+      [ar, redges, cedges, xedges, yedges] = plotEdges(self.imshape, 
+                                                       self.binsiz, 
+                                                       self.scale)
+
+      # gets kde profile of cell data
+      # aux = self.cell_data
+      aux = self.cell_data.loc[self.cell_data['class'] == 't']
+      [r, c, z, m, levs, th] = kdeLevels(aux, 
+                                         self.imshape, 
+                                         self.bw)
+      x = c*self.scale
+      y = (self.imshape[0] - r)*self.scale
+
+      import warnings
+      with warnings.catch_warnings():
+          warnings.simplefilter('ignore')
+
+          fig, ax = plt.subplots(1, 2, 
+                                 figsize=(12*2, 0.5 + math.ceil(12/ar)),
+                                 facecolor='w', edgecolor='k')
+
+          # plots sample scatter (with all cell classes)
+          for i, row in self.classes.iterrows():
+              aux = self.cell_data.loc[self.cell_data['class'] == row['class']]
+              landscapeScatter(ax[0], aux.x, aux.y,
+                               row.class_color, row.class_name,
+                               self.units, xedges, yedges,
+                               spoint=5*self.rcell, fontsiz=36)
+          if (i % 2) != 0:
+              ax[1, 0].grid(which='major', linestyle='--',
+                            linewidth='0.3', color='black')
+          # plots roi contour over scatter
+          ax[0].contour(x, y, m, [0.5], linewidths=2, colors='black')
+          ax[0].set_title('Cell locations', fontsize=36, y=1.02)
+          ax[0].legend(labels=self.classes.class_name,
+                          loc='best',
+                          markerscale=5, fontsize=36,
+                          facecolor='w', edgecolor='k')
+
+          # plots kde levels
+          landscapeLevels(ax[1], x, y, z, m, levs,
+                          self.units, xedges, yedges, fontsiz=36)
+          ax[1].set_title('BE cells - KDE levels', fontsize=36, y=1.02)
+
+          fig.subplots_adjust(hspace=0.4)
+          fig.suptitle('Sample ID: ' + str(self.sid), fontsize=36, y=.95)
+          fig.savefig(os.path.join(self.res_pth, 
+                                   self.sid + '_simple_landscape.png'),
                       bbox_inches='tight', dpi=300)
           plt.close()
 
@@ -1353,10 +1427,10 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'test_set.csv')
-        REDO = False
-        GRPH = False
-        CASE = 0
+        argsfile = os.path.join(main_pth, 'BE_set_1.csv')
+        REDO = True
+        GRPH = True
+        CASE = 332
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -1387,7 +1461,7 @@ def main(args):
     if  (REDO or 
          (not os.path.exists(sample.cell_data_file)) or
          (not os.path.exists(sample.classes_file)) or
-         (not os.path.exists(sample.raster_file))):
+         (not os.path.exists(sample.raster_folder))):
         
         print( msg + " >>> pre-processing..." )
        
@@ -1450,6 +1524,7 @@ def main(args):
     if (GRPH and sample.num_cells > 0):
         sample.plot_landscape_scatter()
         sample.plot_landscape_props()
+        sample.plot_landscape_simple()
         sample.plot_class_landscape_props()
             
     # LAST step: saves study stats results for sample 

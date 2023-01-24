@@ -671,7 +671,10 @@ def nndist_array(rcx, rcy, N, kernel):
             # gets (locally) ratio of mean NNDist
             v = np.divide(mdnnxy, mdnnxx, out=np.zeros(N.shape), 
                           where=(mdnnxx > 0))
-            v[v == 0] = np.nan
+        v[v <= 0] = np.nan
+        
+    else:
+        v = np.nan
 
     return(np.log10(v))
 
@@ -767,15 +770,13 @@ def ripleys_K_biv(rcx, nx, rcy, ny):
 
     Parameters
     ----------
-    - rcx array of 'ref' coordinates
+    - rcx: array of 'ref' coordinates
     - nx: 2D array with ref point abundance at subkernel scale
-    - Nx: 2D array with ref point abundance at kernel scale
-    - ny 2D array with test point abundance at subkernel scale
-    - Ny: 2D array with test point abundance at kernel scale
-    - kernel: kernel array for deconvolution smoothing
+    - rcx: array of 'test' coordinates
+    - ny: 2D array with test point abundance at subkernel scale
     """
     
-    ripley = np.ones(nx.shape)*np.nan
+    ripley = np.nan
     
     if (len(rcx) > 0 and len(rcy) > 0):
       

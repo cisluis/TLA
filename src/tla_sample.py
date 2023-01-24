@@ -527,17 +527,17 @@ class Landscape:
                                  facecolor='w', edgecolor='k')
         
           im = plotRGB(ax, raster, self.units,
-                       cedges, redges, xedges, yedges, fontsiz=18,
+                       cedges, redges, xedges, yedges, fontsiz=36,
                        vmin=0.5, vmax=(nlevs + 0.5), cmap=cmap)
           cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
           cbar.set_ticks(icticks)
           cbar.set_ticklabels(cticks)
-          cbar.ax.tick_params(labelsize=14)
-          cbar.set_label(ctitle, size = 16, rotation=90, labelpad=1)
+          cbar.ax.tick_params(labelsize=24)
+          cbar.set_label(ctitle, size = 36, rotation=90, labelpad=1)
           ax.set_title('Local Micro-Environments (LME)',
-                       fontsize=16, y=1.02)
+                       fontsize=24, y=1.02)
           #fig.subplots_adjust(hspace=0.4)
-          fig.suptitle('Sample ID: ' + str(self.sid), fontsize=18, y=.95)
+          fig.suptitle('Sample ID: ' + str(self.sid), fontsize=36, y=.95)
           #plt.tight_layout()
           fig.savefig(os.path.join(out_pth,
                                    self.sid +'_lme_landscape.png'),
@@ -701,6 +701,41 @@ class Landscape:
                   
               del nndistarr
               gc.collect()     
+              
+              
+  def plotNNDistLandscape_simple(self, icomp, metric, lims):
+    """
+    Plots nearest neighbor distance index landscape from raster
+
+    """
+    # from itertools import permutations
+    # # generate list of comparisons for coloc
+    # comps = [list(c) for c in list(permutations(self.classes.index, r=2))]
+    
+    out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
+    
+    aux = np.load(self.nndist_file)
+    nndistarr = aux['nndist']
+        
+    # plots array of landscapes for these comparisons
+    fig = plotCompLandscape_simple(self.sid,
+                                   nndistarr,
+                                   icomp,
+                                   self.imshape,
+                                   metric,
+                                   lims,
+                                   self.scale,
+                                   self.units,
+                                   self.binsiz)
+        
+    # saves to png file
+    fig.savefig(os.path.join(out_pth,
+                             self.sid +'_nndist_landscape_simple.png'),
+                bbox_inches='tight', dpi=300)
+    plt.close()
+                      
+    del nndistarr
+    gc.collect()    
           
 
   def plotRHFuncLandscape(self, redo, analyses, lims, do_plots):
@@ -769,7 +804,41 @@ class Landscape:
               del rhfuncarr
               gc.collect()       
               
+
+  def plotRHFuncLandscape_simple(self, icomp, metric, lims):
+      """
+      Plots Ripley`s H function score landscape from raster
+
+      """
+      # from itertools import product
+      # # generate list of comparisons for coloc
+      # comps = [list(c) for c in list(product(self.classes.index, repeat=2))]
       
+      out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
+      
+      aux = np.load(self.rhfunc_file)
+      rhfuncarr = aux['rhfunc']
+              
+      # plots array of landscapes for these comparisons
+      fig = plotCompLandscape_simple(self.sid,
+                                     rhfuncarr,
+                                     icomp, 
+                                     self.imshape,
+                                     metric, 
+                                     lims,
+                                     self.scale, 
+                                     self.units, 
+                                     self.binsiz)
+              
+      # saves to png file
+      fig.savefig(os.path.join(out_pth,
+                               self.sid +'_rhfunc_landscape_simple.png'),
+                bbox_inches='tight', dpi=300)
+      plt.close()
+                  
+      del rhfuncarr
+      gc.collect()               
+
   def plotGeOrdLandscape(self, redo, analyses, lims, do_plots):
       """
       Plots Getis-Ord Z score landscape from raster
@@ -1679,7 +1748,7 @@ def plotCompLandscape(sid, raster, comps, shape,
     bticks = np.arange(lims[0], lims[1] + bini, bini)
     
     [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
-    
+
     #vmax = np.nanquantile(raster, 0.99) + 2*bini
     vmax = lims[1]
     bbticks = bticks[bticks <= vmax] 
@@ -1759,6 +1828,70 @@ def plotCompLandscape(sid, raster, comps, shape,
         
     return([fig, comp_metrics] )
 
+
+def plotCompLandscape_simple(sid, raster, idx, shape, 
+                             metric, lims, scale, units, binsiz):
+    """
+    Plot of landscape from comparison raster
+
+    Parameters
+    ----------
+    - sid: sample ID
+    - raster: (numpy) raster image
+    - comps: (list) class comparisons
+    - shape: (tuple) shape in pixels of TLA landscape
+    - metric: (str) title of metric ploted
+    - lims: (tuple) limits of the metric
+    - scale: (float) scale of physical units / pixel
+    - units: (str) name of physical units (eg '[um]')
+    - binsiz : (float) size of quadrats
+
+    """
+    
+    from myfunctions import plotRGB, plotEdges
+
+    nlevs = 20
+    bini = (lims[1] - lims[0])/(nlevs)
+    cticks = np.arange(lims[0], lims[1] + 2*bini, 2*bini)
+    bticks = np.arange(lims[0], lims[1] + bini, bini)
+    
+    [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
+
+    vmax = lims[1]
+    bbticks = bticks[bticks <= vmax] 
+    
+    cmap = plt.get_cmap('jet', len(bbticks))
+
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        
+        # plots sample image
+        fig, ax = plt.subplots(1, 1,
+                               figsize=(12, 0.5 + math.ceil(12/ar)),
+                               facecolor='w', edgecolor='k')
+
+        aux = raster[:, :, idx]
+            
+        # generates discrete values of the factor
+        auy = aux.copy()
+        auy[np.isnan(aux)] = 0
+        inx = np.digitize(auy, bticks[:-1])
+        auy = bticks[inx]
+        auy[np.isnan(aux)] = np.nan
+            
+        im = plotRGB(ax, auy, units,
+                     cedges, redges, xedges, yedges, fontsiz=36,
+                     vmin=lims[0], vmax=vmax, cmap=cmap)
+    
+        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_ticks(cticks[cticks <= vmax])
+        cbar.set_label(metric, rotation=90, labelpad=2)
+        
+        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        
+    return(fig)
 
 
 def plotCompCorrelations(raster, comps, ttl, lims):
@@ -2138,10 +2271,10 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'test_set.csv')
+        argsfile = os.path.join(main_pth, 'BE_set_1.csv')
         REDO = False
-        GRPH = False
-        CASE = 0
+        GRPH = True
+        CASE = 577
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -2196,6 +2329,13 @@ def main(args):
         land.plotRHFuncLandscape(REDO,  study.analyses, [-1.0, 1.0], GRPH)
         land.plotGeOrdLandscape(REDO, study.analyses, [-5, 5], GRPH)
         land.plotFactorCorrelations(REDO, study.analyses, GRPH)
+        
+        # land.plotNNDistLandscape_simple(0, 
+        #                                 'NND index - BE cells::Lymphocytes', 
+        #                                 [-1, 1])
+        # land.plotRHFuncLandscape_simple(3, 
+        #                                 'RHF index - Lymphocytes::BE cells', 
+        #                                 [-1, 1])
         
         # saves a proxy table to flag end of process (in case next step is 
         # commented and don't want to redo all analysis up to here)
