@@ -127,7 +127,8 @@ class Study:
   def summarize(self):
                 
       # plots distributions of quadrat stats
-      self.classes = quadFigs(self.allpops_out, self.classes,
+      self.classes = quadFigs(self.allpops_out, 
+                              self.classes,
                               os.path.join(self.dat_path,
                                            self.name + '_quadrat_stats.png'))
       self.classes.to_csv(os.path.join(self.dat_path, 
@@ -221,6 +222,7 @@ def quadFigs(quadrats, classes, pngout):
         aux = pd.DataFrame({'class': [row['class']]})
 
         vals = quadrats[row['class']]
+        vals = vals[vals>0]
         qats = []
         
         if (len(vals) > 0):
@@ -243,6 +245,7 @@ def quadFigs(quadrats, classes, pngout):
         aux['abundance_edges'] = [qats]
  
         vals = quadrats[row['class']+'_MH']
+        vals = vals[~np.isnan(vals)]
         qats = []
         
         if (len(vals) > 0):
@@ -289,7 +292,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'CRC_set.csv')
+        argsfile = os.path.join(main_pth, 'BE_set_1_D1199.csv')
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -302,7 +305,7 @@ def main(args):
         print("ERROR: The specified argument file does not exist!")
         sys.exit()
         
-    # only the first study in the argument table will be used
+    # %% only the first study in the argument table will be used
     study = Study(pd.read_csv(argsfile).iloc[0], main_pth)
     
     # summarize stats in study tables

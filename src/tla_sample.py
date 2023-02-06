@@ -56,12 +56,21 @@ class Study:
           sys.exit()
       self.classes = getLMEclasses(f)
       
+      f = os.path.join(main_pth, study['raw_path'], study['raw_samples_table'])
+      if not os.path.exists(f):
+          print("ERROR: raw samples file " + f + " does not exist!")
+          sys.exit()
+      raw_samples = pd.read_csv(f)[["sample_ID"]]
+      
       f = os.path.join(self.dat_pth, study['name'] + '_samples.csv')
       if not os.path.exists(f):
           print("ERROR: samples file " + f + " does not exist!")
           sys.exit()
-      self.samples = pd.read_csv(f)
-      self.samples.fillna('', inplace=True)
+      all_samples = pd.read_csv(f)    
+          
+      aux = raw_samples.merge(all_samples, how='left', on='sample_ID')
+      aux.fillna('', inplace=True)
+      self.samples = aux
       
       # scale parameters
       self.factor = 1.0
@@ -91,6 +100,9 @@ class Study:
       
       # get sample entry from samples df
       sample = self.samples.iloc[i].copy()
+      
+      if (sample.num_cells == ''):
+          sample.num_cells = 0
             
       # check that results dir exist
       f = os.path.join(self.dat_pth, sample['results_dir'])
@@ -598,6 +610,7 @@ class Landscape:
               # plots array of landscapes for these comparisons
               [fig, metrics] = plotCompLandscape(self.sid,
                                                  colocarr, 
+                                                 self.roiarr,
                                                  coloc_comps, 
                                                  self.imshape,
                                                  'Colocalization index', 
@@ -664,6 +677,7 @@ class Landscape:
               # plots array of landscapes for these comparisons
               [fig, metrics] = plotCompLandscape(self.sid, 
                                                  nndistarr, 
+                                                 self.roiarr,
                                                  nndist_comps, 
                                                  self.imshape,
                                                  'Nearest Neighbor Distance index',
@@ -720,6 +734,7 @@ class Landscape:
     # plots array of landscapes for these comparisons
     fig = plotCompLandscape_simple(self.sid,
                                    nndistarr,
+                                   self.roiarr,
                                    icomp,
                                    self.imshape,
                                    metric,
@@ -769,6 +784,7 @@ class Landscape:
               # plots array of landscapes for these comparisons
               [fig, metrics] = plotCompLandscape(self.sid,
                                                  rhfuncarr,
+                                                 self.roiarr,
                                                  rhfunc_comps, 
                                                  self.imshape,
                                                  'Ripley`s H function score', 
@@ -822,6 +838,7 @@ class Landscape:
       # plots array of landscapes for these comparisons
       fig = plotCompLandscape_simple(self.sid,
                                      rhfuncarr,
+                                     self.roiarr,
                                      icomp, 
                                      self.imshape,
                                      metric, 
@@ -838,6 +855,7 @@ class Landscape:
                   
       del rhfuncarr
       gc.collect()               
+
 
   def plotGeOrdLandscape(self, redo, analyses, lims, do_plots):
       """
@@ -871,6 +889,7 @@ class Landscape:
               # plots array of landscapes for these comparisons
               [fig, metrics] = plotCaseLandscape(self.sid,
                                                  geordGarr,
+                                                 self.roiarr,
                                                  geordG_comps,
                                                  self.imshape,
                                                  'Getis-Ord Z score', 
@@ -894,6 +913,7 @@ class Landscape:
                   # plots array of landscapes for these comparisons
                   fig = plotDiscreteLandscape(self.sid, 
                                               hotarr, 
+                                              self.roiarr,
                                               geordG_comps, 
                                               self.imshape,
                                               'HOT score', 
@@ -971,24 +991,33 @@ class Landscape:
           if iscoloc:
               aux = np.load(self.coloc_file)
               colocarr = aux['coloc']
+              if (np.isnan(colocarr).all()):
+                  iscoloc = False
+              
           if isnndist:
               aux = np.load(self.nndist_file)
               nndistarr = aux['nndist']   
-              try:
-                  vmin = 0.25*round(np.nanquantile(nndistarr, .001)/0.25)
-                  vmax = 0.25*round(np.nanquantile(nndistarr, .999)/0.25)
-              except:
-                  vmin = -1
-                  vmax = 1
+              if (np.isnan(nndistarr).all()):
+                  isnndist = False
+              else:
+                  try:
+                      vmin = 0.25*round(np.nanquantile(nndistarr, .001)/0.25)
+                      vmax = 0.25*round(np.nanquantile(nndistarr, .999)/0.25)
+                  except:
+                      vmin = -1
+                      vmax = 1
           if isrhfunc:
               aux = np.load(self.rhfunc_file)
               rhfuncarr = aux['rhfunc']
-              try:
-                  wmin = 0.25*round(np.nanquantile(rhfuncarr, .001)/0.25)
-                  wmax = 0.25*round(np.nanquantile(rhfuncarr, .999)/0.25)    
-              except:
-                  wmin = -1
-                  wmax = 1
+              if (np.isnan(rhfuncarr).all()):
+                  isrhfunc = False
+              else:
+                  try:
+                      wmin = 0.25*round(np.nanquantile(rhfuncarr, .001)/0.25)
+                      wmax = 0.25*round(np.nanquantile(rhfuncarr, .999)/0.25)    
+                  except:
+                      wmin = -1
+                      wmax = 1
         
           if iscoloc and isrhfunc:
                           
@@ -1536,7 +1565,7 @@ def lmeAdjacencyHeatmap(sid, adj_pairs, res_pth ):
     return(0)
 
 
-def plotCaseLandscape(sid, raster, comps, shape,
+def plotCaseLandscape(sid, raster, roi, comps, shape,
                       metric, lims, scale, units, binsiz, do_plots):
     """
     Plot of landscape from comparison raster
@@ -1578,7 +1607,7 @@ def plotCaseLandscape(sid, raster, comps, shape,
         # plots sample image
         if do_plots:
             fig, ax = plt.subplots(dim, 2,
-                                   figsize=(12*2, 0.5 + math.ceil(12*dim/ar)),
+                                   figsize=(3*2, 0.5 + math.ceil(3*dim/ar)),
                                    facecolor='w', edgecolor='k')
 
         for i, comp in enumerate(comps):
@@ -1607,7 +1636,8 @@ def plotCaseLandscape(sid, raster, comps, shape,
                 im = plotRGB(ax[i, 0], aux, units,
                              cedges, redges, xedges, yedges, fontsiz=18,
                              vmin=lims[0], vmax=lims[1], cmap=cmap)
-    
+                ax[i, 0].contour(np.flip(roi, 0), 
+                                 [0.5], linewidths=2, colors='black')
                 cbar = plt.colorbar(im, ax=ax[i, 0], fraction=0.046, pad=0.04)
                 cbar.set_ticks(cticks)
                 cbar.set_label(metric, rotation=90, labelpad=2)
@@ -1642,7 +1672,7 @@ def plotCaseLandscape(sid, raster, comps, shape,
     return([fig, comp_metrics])
 
 
-def plotDiscreteLandscape(sid, raster, comps, shape,
+def plotDiscreteLandscape(sid, raster, roi, comps, shape,
                           metric, lims, scale, units, binsiz):
     """
     Plot of discrete landscape from comparison raster
@@ -1679,7 +1709,7 @@ def plotDiscreteLandscape(sid, raster, comps, shape,
 
         # plots sample image
         fig, ax = plt.subplots(dim, 2,
-                               figsize=(12*2, 0.5 + math.ceil(12*dim/ar)),
+                               figsize=(3*2, 0.5 + math.ceil(3*dim/ar)),
                                facecolor='w', edgecolor='k')
 
         for i, comp in enumerate(comps):
@@ -1689,7 +1719,8 @@ def plotDiscreteLandscape(sid, raster, comps, shape,
             im = plotRGB(ax[i, 0], aux, units,
                          cedges, redges, xedges, yedges, fontsiz=18,
                          vmin=lims[0], vmax=lims[1], cmap=cmap)
-
+            ax[i, 0].contour(np.flip(roi, 0), 
+                             [0.5], linewidths=2, colors='black')
             cbar = plt.colorbar(im, ax=ax[i, 0], fraction=0.046, pad=0.04)
             cbar.set_ticks(cticks)
             cbar.set_label(metric, rotation=90, labelpad=2)
@@ -1719,7 +1750,7 @@ def plotDiscreteLandscape(sid, raster, comps, shape,
     return(fig)
 
 
-def plotCompLandscape(sid, raster, comps, shape,
+def plotCompLandscape(sid, raster, roi, comps, shape,
                       metric, lims, scale, units, binsiz, do_plots):
     """
     Plot of landscape from comparison raster
@@ -1766,7 +1797,7 @@ def plotCompLandscape(sid, raster, comps, shape,
         # plots sample image
         if do_plots:
             fig, ax = plt.subplots(dim, 2,
-                                   figsize=(12*2, 0.5 + math.ceil(12*dim/ar)),
+                                   figsize=(3*2, 0.5 + math.ceil(3*dim/ar)),
                                    facecolor='w', edgecolor='k')
 
         for i, comp in enumerate(comps):
@@ -1794,6 +1825,8 @@ def plotCompLandscape(sid, raster, comps, shape,
                 im = plotRGB(ax[i, 0], auy, units,
                              cedges, redges, xedges, yedges, fontsiz=12,
                              vmin=lims[0], vmax=vmax, cmap=cmap)
+                ax[i, 0].contour(np.flip(roi, 0), 
+                                 [0.5], linewidths=2, colors='black')
     
                 cbar = plt.colorbar(im, ax=ax[i, 0], fraction=0.046, pad=0.04)
                 cbar.set_ticks(cticks[cticks <= vmax])
@@ -1829,7 +1862,7 @@ def plotCompLandscape(sid, raster, comps, shape,
     return([fig, comp_metrics] )
 
 
-def plotCompLandscape_simple(sid, raster, idx, shape, 
+def plotCompLandscape_simple(sid, raster, roi, idx, shape, 
                              metric, lims, scale, units, binsiz):
     """
     Plot of landscape from comparison raster
@@ -1883,7 +1916,8 @@ def plotCompLandscape_simple(sid, raster, idx, shape,
         im = plotRGB(ax, auy, units,
                      cedges, redges, xedges, yedges, fontsiz=36,
                      vmin=lims[0], vmax=vmax, cmap=cmap)
-    
+        ax.contour(np.flip(roi, 0), 
+                   [0.5], linewidths=2, colors='black')
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         cbar.set_ticks(cticks[cticks <= vmax])
         cbar.set_label(metric, rotation=90, labelpad=2)
@@ -1905,7 +1939,7 @@ def plotCompCorrelations(raster, comps, ttl, lims):
     ncols = int(np.ceil(np.sqrt(nc)))
 
     fig, ax = plt.subplots(int(np.ceil(nc/ncols)), ncols,
-                           figsize=(ncols*12, (nc/ncols)*12),
+                           figsize=(ncols*3, (nc/ncols)*3),
                            facecolor='w', edgecolor='k')
     
     def corij(auxi, auxj, ax, compi, compj, lims):
@@ -1914,7 +1948,7 @@ def plotCompCorrelations(raster, comps, ttl, lims):
         aux = aux[~np.isnan(aux).any(axis=1)]
         aux = aux[np.random.randint(len(aux),
                                     size=min(1000, len(aux))), :]
-
+        
         xlab = '(' + compi[0] + ':' + compi[1] + ')'
         ylab = '(' + compj[0] + ':' + compj[1] + ')'
 
@@ -1931,17 +1965,21 @@ def plotCompCorrelations(raster, comps, ttl, lims):
                     color='k', linestyle='dashed')
         ax.set_xlim(lims[0], lims[1])
         ax.set_ylim(lims[0], lims[1])
-
-        correlation, p_value = sts.pearsonr(aux[:, 0], aux[:, 1])
-        star = 'NS'
-        if (p_value < 0.05):
-            star = '*'
-        if (p_value < 0.01):
-            star = '**'
-        if (p_value < 0.001):
-            star = '***'
-        coefs = 'C = %.4f; p-value = %.2e' % (correlation, p_value)
-        ax.set_title(coefs + ' (' + star + ')')
+            
+        coefs = 'C = NA'
+        if (len(aux > 5)):
+            correlation, p_value = sts.pearsonr(aux[:, 0], aux[:, 1])
+            star = 'NS'
+            if (p_value < 0.05):
+                star = '*'
+            if (p_value < 0.01):
+                star = '**'
+            if (p_value < 0.001):
+                star = '***'
+            coefs = 'C = %.4f; p-value = %.2e' % (correlation, p_value) +\
+                ' (' + star + ')'
+            
+        ax.set_title(coefs)
         
         
     if (nc > 1):
@@ -2271,10 +2309,10 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'BE_set_1.csv')
-        REDO = False
+        argsfile = os.path.join(main_pth, 'BE_set_1_3.csv')
+        REDO = True
         GRPH = True
-        CASE = 577
+        CASE = 63
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -2303,63 +2341,68 @@ def main(args):
     msg = "====> Case [" + str(CASE + 1) + \
           "/" + str(len(study.samples.index)) + \
           "] :: SID <- " + sid 
-    
-    # output sample data filenames
-    # landpkl = os.path.join(sample['res_pth'], sid +'_landscape.pkl')
-    samplcsv = os.path.join(sample['res_pth'], sid +'_lme_tbl.csv')
-    
-    #GO = False
-    #if (sample['num_cells'] > 10000):
-    GO = (REDO or (not os.path.exists(samplcsv)))
-    
-    # if processed landscape do not exist
-    if (GO):
           
-        print( msg + " >>> processing..." )
+    if (sample.num_cells > 0):
+        
+        # output sample data filenames
+        # landpkl = os.path.join(sample['res_pth'], sid +'_landscape.pkl')
+        samplcsv = os.path.join(sample['res_pth'], sid +'_lme_tbl.csv')
+        
+        #GO = False
+        #if (sample['num_cells'] > 10000):
+        GO = (REDO or (not os.path.exists(samplcsv)))
+        
+        # if processed landscape do not exist
+        if (GO):
+              
+            print( msg + " >>> processing..." )
+        
+            # STEP 1: loading data
+            land = Landscape(sample, study)
     
-        # %% STEP 1: loading data
-        land = Landscape(sample, study)
-
-        # %% STEP 2: calculate kernel-level space stats
-        land.getSpaceStats(REDO, study.analyses)
-        
-        # %% STEP 3: prints space stats
-        land.plotColocLandscape(REDO, study.analyses, [0.0 ,1.0], GRPH)
-        land.plotNNDistLandscape(REDO, study.analyses, [-1.5, 1.5], GRPH)
-        land.plotRHFuncLandscape(REDO,  study.analyses, [-1.0, 1.0], GRPH)
-        land.plotGeOrdLandscape(REDO, study.analyses, [-5, 5], GRPH)
-        land.plotFactorCorrelations(REDO, study.analyses, GRPH)
-        
-        # land.plotNNDistLandscape_simple(0, 
-        #                                 'NND index - BE cells::Lymphocytes', 
-        #                                 [-1, 1])
-        # land.plotRHFuncLandscape_simple(3, 
-        #                                 'RHF index - Lymphocytes::BE cells', 
-        #                                 [-1, 1])
-        
-        # saves a proxy table to flag end of process (in case next step is 
-        # commented and don't want to redo all analysis up to here)
-        sample.to_csv(samplcsv, sep=',', index=False, header=True)
-        
-        # %% STEP 4: assigns LME values to landscape
-        land.loadLMELandscape(REDO)
-        
-        # % STEP 5: pylandstats analysis
-        # Regular metrics can be computed at the patch, class and
-        # landscape level. For list of all implemented metrics see: 
-        # https://pylandstats.readthedocs.io/en/latest/landscape.html
-        land.landscapeAnalysis(sample, samplcsv, GRPH)      
-        
-        # pickle results of quadrats analysis (for faster re-runs)
-        # with open(landpkl, 'wb') as f:  
-        #      pickle.dump([land], f)  
-        # del land
+            # STEP 2: calculate kernel-level space stats
+            land.getSpaceStats(REDO, study.analyses)
             
-    # else:
-        # %% STEP 6: loads landscape data
-        # with open(landpkl, 'rb') as f:  
-        #    [land] = pickle.load(f) 
+            # STEP 3: prints space stats
+            land.plotColocLandscape(REDO, study.analyses, [0.0 ,1.0], GRPH)
+            land.plotNNDistLandscape(REDO, study.analyses, [-1.5, 1.5], GRPH)
+            land.plotRHFuncLandscape(REDO,  study.analyses, [-1.0, 1.0], GRPH)
+            land.plotGeOrdLandscape(REDO, study.analyses, [-5, 5], GRPH)
+            land.plotFactorCorrelations(REDO, study.analyses, GRPH)
+            
+            if (GRPH):
+                land.plotNNDistLandscape_simple(0, 'NND index', [-1, 1])
+                land.plotRHFuncLandscape_simple(3, 'RHF index', [-1, 1])
         
+            # saves a proxy table to flag end of process (in case next step is 
+            # commented and don't want to redo all analysis up to here)
+            # sample.to_csv(samplcsv, sep=',', index=False, header=True)
+        
+            # STEP 4: assigns LME values to landscape
+            land.loadLMELandscape(REDO)
+            
+            # STEP 5: pylandstats analysis
+            # Regular metrics can be computed at the patch, class and
+            # landscape level. For list of all implemented metrics see: 
+            # https://pylandstats.readthedocs.io/en/latest/landscape.html
+            land.landscapeAnalysis(sample, samplcsv, GRPH)      
+            
+            # pickle results of quadrats analysis (for faster re-runs)
+            # with open(landpkl, 'wb') as f:  
+            #      pickle.dump([land], f)  
+            # del land
+                
+        else:
+            
+            # STEP 6: loads landscape data
+            # with open(landpkl, 'rb') as f:  
+            #    [land] = pickle.load(f) 
+            
+            print( msg + " >>> already processed..." )
+            
+    else:
+        
+        print( msg + " >>> dropped sample..." )
     
     # %% end
     return(0)        

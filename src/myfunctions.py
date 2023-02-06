@@ -225,8 +225,8 @@ def kdeLevels(data, shape, bw, all_cells=True, toplev=1.0):
         th = 10**np.min(aux[aux > (np.max(aux) - toplev)])
     levs = 10**np.arange(np.floor(np.log10(th)), np.ceil(np.max(aux)) + 1)
 
-    # get mask at 'th' level (min size ratio == 10x bw)
-    m = arrayLevelMask(z, th, 10*bw)
+    # get mask at 'th' level (min size radius == 5x bw)
+    m = arrayLevelMask(z, th, 5*bw)
 
     return([r, c, z, m, levs, th])
 
@@ -640,8 +640,6 @@ def nndist_array(rcx, rcy, N, kernel):
 
     from scipy.spatial import KDTree
     
-    v = np.zeros(N.shape)
-    
     if (len(rcx) > 1):
 
         # get nearest neighbor distances of ref cells with their own type
@@ -672,11 +670,12 @@ def nndist_array(rcx, rcy, N, kernel):
             v = np.divide(mdnnxy, mdnnxx, out=np.zeros(N.shape), 
                           where=(mdnnxx > 0))
         v[v <= 0] = np.nan
+        v = np.log10(v)
         
     else:
-        v = np.nan
+        v = np.nan*np.ones(N.shape)
 
-    return(np.log10(v))
+    return(v)
 
 
 def ripleys_K(rc, n):

@@ -1430,7 +1430,7 @@ def main(args):
         argsfile = os.path.join(main_pth, 'BE_set_1.csv')
         REDO = True
         GRPH = True
-        CASE = 332
+        CASE = 510
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -1457,7 +1457,7 @@ def main(args):
           "/" + str(len(study.samples.index)) + \
           "] :: SID <- " + sample.sid 
     
-    # if pre-processed files do not exist
+    # %%if pre-processed files do not exist
     if  (REDO or 
          (not os.path.exists(sample.cell_data_file)) or
          (not os.path.exists(sample.classes_file)) or
