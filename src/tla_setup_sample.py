@@ -229,7 +229,7 @@ class Sample:
           print("ERROR: data file " + self.raw_cell_data_file + \
                 " does not exist!")
           sys.exit()
-      cxy = pd.read_csv(self.raw_cell_data_file)[['class', 'x', 'y']]
+      cxy = pd.read_csv(self.raw_cell_data_file)#[['class', 'x', 'y']]
       cxy = cxy.loc[cxy['class'].isin(self.classes['class'])]
       
       # updates coordinae values by conversion factor (from pix to xip)
@@ -317,7 +317,7 @@ class Sample:
       else:
           self.msk = msk
       
-      self.cell_data = cell_data
+      self.cell_data = cell_data.reset_index(drop=True)
       self.imshape = imshape    
       
       
@@ -362,7 +362,7 @@ class Sample:
           
       if self.ismk:
           aux = np.load(self.mask_file)
-          self.msk = aux['mask']
+          self.msk = aux['roi']
       else:
           self.msk = np.zeros(self.imshape)
   
@@ -433,12 +433,12 @@ class Sample:
           if (len(aux) > 0):
               
               irc = np.array(aux[['i', 'row', 'col']])
-
+              
               # do KDE on pixel locations of target cells (e.g. tumor cells)
-              [_, _, z] = KDE(aux, self.imshape, self.bw)
+              [_, _, z] = KDE(aux, self.imshape, self.supbw)
     
               # generate a binary mask
-              mask = arrayLevelMask(z, denthr, self.bw)
+              mask = arrayLevelMask(z, denthr, self.supbw, fill_holes=False)
     
               # tag masked out cells
               ii = np.ones(len(data))
@@ -1055,7 +1055,7 @@ class Sample:
               landscapeScatter(ax, aux.x, aux.y, 
                                row.class_color, row.class_name,
                                self.units, xedges, yedges, 
-                               spoint=2*self.rcell, fontsiz=18)
+                               spoint=5*self.rcell, fontsiz=18)
               j = j + 1
       if (j % 2) != 0:
           ax.grid(which='major', linestyle='--', 
@@ -1196,25 +1196,25 @@ class Sample:
               landscapeScatter(ax[0], aux.x, aux.y,
                                row.class_color, row.class_name,
                                self.units, xedges, yedges,
-                               spoint=5*self.rcell, fontsiz=36)
+                               spoint=5*self.rcell, fontsiz=18)
           if (i % 2) != 0:
-              ax[1, 0].grid(which='major', linestyle='--',
+              ax[0].grid(which='major', linestyle='--',
                             linewidth='0.3', color='black')
           # plots roi contour over scatter
           ax[0].contour(x, y, m, [0.5], linewidths=2, colors='black')
-          ax[0].set_title('Cell locations', fontsize=36, y=1.02)
+          ax[0].set_title('Cell locations', fontsize=18, y=1.02)
           ax[0].legend(labels=self.classes.class_name,
                           loc='best',
-                          markerscale=5, fontsize=36,
+                          markerscale=5, fontsize=18,
                           facecolor='w', edgecolor='k')
 
           # plots kde levels
           landscapeLevels(ax[1], x, y, z, m, levs,
-                          self.units, xedges, yedges, fontsiz=36)
-          ax[1].set_title('BE cells - KDE levels', fontsize=36, y=1.02)
+                          self.units, xedges, yedges, fontsiz=18)
+          ax[1].set_title('BE cells - KDE levels', fontsize=18, y=1.02)
 
           fig.subplots_adjust(hspace=0.4)
-          fig.suptitle('Sample ID: ' + str(self.sid), fontsize=36, y=.95)
+          fig.suptitle('Sample ID: ' + str(self.sid), fontsize=18, y=.95)
           fig.savefig(os.path.join(self.res_pth, 
                                    self.sid + '_simple_landscape.png'),
                       bbox_inches='tight', dpi=300)
@@ -1321,7 +1321,7 @@ def xyShift(data, shape, ref, scale):
     cell_data = cell_data.reset_index(drop=True)
 
     # generate a cell id
-    cell_data['cell_id'] = cell_data.index + 1
+    #cell_data['cell_id'] = cell_data.index + 1
 
     # round pixel coordinates
     cell_data['col'] = np.uint32(np.rint(cell_data['x']))
@@ -1421,16 +1421,16 @@ def main(args):
 
     """
     # %% debug starts
-    debug = False
+    debug = True
 
     if debug:
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'BE_set_1.csv')
+        argsfile = os.path.join(main_pth, 'Validation_set.csv')
         REDO = True
         GRPH = True
-        CASE = 510
+        CASE = 0
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -1449,7 +1449,7 @@ def main(args):
     # NOTE: only ONE line in the argument table will be used
     study = Study( pd.read_csv(argsfile).iloc[0], main_pth)
     
-    # %% STEP 1: creates data directories and new sample table
+    # % STEP 1: creates data directories and new sample table
     # creates sample object and data folders for pre-processed data
     
     sample = Sample(CASE, study)
