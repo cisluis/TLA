@@ -41,18 +41,18 @@ class Study:
       self.dat_path = os.path.join(main_pth, study['data_path'])
       if not os.path.exists(self.dat_path):
           os.makedirs(self.dat_path)
+          
+      # scale parameters
+      self.scale = study['scale']
+      self.units = study['units']
 
       # the size of quadrats and subquadrats
-      self.binsiz = int((study['binsiz']))
-      self.subbinsiz = int(self.binsiz/5)
+      self.binsiz = int(4*np.ceil((study['binsiz']/self.scale)/4))
+      self.subbinsiz = int(self.binsiz/4)
 
       # bandwidth size for convolutions is half the quadrat size
       self.supbw = int(self.binsiz/2)
       self.bw = int(self.subbinsiz/2)
-
-      # scale parameters
-      self.scale = study['scale']
-      self.units = study['units']
 
       # reduces classes df to just the accepted types (i.e. `drop=False`)
       classes_file = os.path.join(self.raw_path, study['raw_classes_table'])
@@ -143,11 +143,23 @@ class Study:
       perms = list(permutations(self.classes['class'].tolist(), 2))
       prods = list(product(self.classes['class'].tolist(), repeat=2))
       
-      aux = pd.DataFrame(data = {'name': ['coloc','nndist','rhfunc','geordG'], 
-                                 'drop': [False, False, False, False],
-                                 'comps':[combs, perms, prods, cases]})
-      aux.to_csv(os.path.join(self.dat_path, 
-                                       self.name + '_analyses.csv'), 
+      aux = pd.DataFrame(data = {'name': ['coloc',
+                                          'nndist',
+                                          'aefunc',
+                                          'rhfunc',
+                                          'geordG'], 
+                                 'drop': [False, 
+                                          False, 
+                                          False, 
+                                          False,
+                                          False],
+                                 'comps':[combs, 
+                                          perms, 
+                                          prods, 
+                                          prods,
+                                          cases]})
+      aux.to_csv(os.path.join(self.dat_path,
+                              self.name + '_analyses.csv'), 
                  index=False)
         
    
@@ -226,7 +238,9 @@ def quadFigs(quadrats, classes, pngout):
         qats = []
         
         if (len(vals) > 0):
-            qats = np.nanquantile(vals, [0.0, 0.5, 0.87, 1.0]).tolist()
+            qats = [0] + \
+                np.around(np.nanquantile(vals, 
+                                         [0.125, 0.875, 1.0]), 2).tolist()
             # qats = [0.0, np.mean(vals),
             #         np.mean(vals) + np.std(vals), np.max(vals)]
             
@@ -249,7 +263,7 @@ def quadFigs(quadrats, classes, pngout):
         qats = []
         
         if (len(vals) > 0):
-            qats = [0.0, 0.2, 0.67, 1.0]
+            qats = [0.0, 0.5, 0.9, 1.0]
             n = quadDist(vals, 
                          row['class_name'],
                          'Mixing index per quadrat',
@@ -292,7 +306,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'BE_set_1_D1199.csv')
+        argsfile = os.path.join(main_pth, 'TNBC.csv')
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)

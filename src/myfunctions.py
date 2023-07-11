@@ -225,8 +225,8 @@ def kdeLevels(data, shape, bw, all_cells=True, toplev=1.0):
         th = 10**np.min(aux[aux > (np.max(aux) - toplev)])
     levs = 10**np.arange(np.floor(np.log10(th)), np.ceil(np.max(aux)) + 1)
 
-    # get mask at 'th' level (min size radius == 5x bw)
-    m = arrayLevelMask(z, th, 5*bw)
+    # get mask at 'th' level (min size radius == bw)
+    m = arrayLevelMask(z, th, bw, fill_holes=False)
 
     return([r, c, z, m, levs, th])
 
@@ -484,7 +484,7 @@ def morisita_horn(x, y):
     - y: array of data containing counts of events per pixel.
     """
 
-    # dispersion in x and y abundance
+    # dispersion in x and y abundances
     xx = np.sum(np.multiply(x, x))
     yy = np.sum(np.multiply(y, y))
     xy = np.sum(np.multiply(x, y))
@@ -526,7 +526,8 @@ def getis_ord_g_array(X, msk):
     - X: array of data containing counts of events per kernel.
     - msk: ROI mask
     """
-    from scipy.stats import norm
+    #from scipy.stats import norm
+    from scipy import special
 
     # local neighborhood (to first rectangular neighbors )
     box = np.ones((3, 3))
@@ -546,7 +547,8 @@ def getis_ord_g_array(X, msk):
     s = np.std(x)
     u = np.sqrt((n*sw - (sw**2))/(n-1))
     z = (wx - np.mean(x)*sw)/(s*u)
-    p = 2*norm.sf(abs(z))
+    #p = 2*norm.sf(np.abs(z))
+    p = 2*(1 - special.ndtr(np.abs(z)))
     p[np.isnan(p)] = 1
     sig = np.sign(z)
     sig[p > 0.05] = 0
@@ -678,6 +680,112 @@ def nndist_array(rcx, rcy, N, kernel):
     return(v)
 
 
+def attraction_T_biv(rcx, lambday, ny):
+    """
+    Attraction Enrichment Functions score T
+
+    Array form, evaluated in each kernel, of Attraction T(r) function
+    evaluated at r given by subkernel scale. Done between 'ref' points and
+    'test' points, this measure is NOT symetrical:
+    (*) T = 0 indicates uniform mixing between 'test' and 'ref' cells
+    (*) T = +1 indicates clustering of 'test' cells around 'ref' cells
+            (i.e. more attraction than 'ref' cells around 'ref' cells)
+    (*) T = -1 indicates dispersion of 'test' cells around 'ref' cells
+            (i.e. less attraction than 'ref' cells around 'ref' cells)
+
+    Parameters
+    ----------
+    - rcx: array of 'ref' coordinates (sample points)
+    - lambday: total density of 'test' points (parental mean density)
+    - ny: 2D array with test point density at subkernel scale (raster of 
+                                                               densities to be
+                                                               sampled)
+    """
+    
+    from scipy import stats
+    
+    t = np.nan
+    p = np.nan
+    Nx = len(rcx)
+    
+    if (Nx > 0):
+        # mean 'test' point density around 'ref' points 
+        # relative to their global density 'lambday'
+        aux = ny[rcx[:, 0], rcx[:, 1]].ravel()
+        
+        # p is the probability of the t-test with the null 
+        # hypothesis that the two point distributions are equivalent
+        res = stats.ttest_1samp(aux, 
+                                popmean=lambday,
+                                nan_policy='omit')
+        t = res.statistic
+        p = res.pvalue
+    
+    return(np.sign(t)*(p < 0.05))
+
+
+def attraction_T_array_biv(rcx, Ny, dy, kernel):
+    """
+    Attraction Enrichment Functions score T
+
+    Array form, evaluated in each kernel, of Attraction T(r) function
+    evaluated at r given by subkernel scale. Done between 'ref' points and
+    'test' points, this measure is NOT symetrical:
+    (*) T = 0 indicates uniform mixing between 'test' and 'ref' cells
+    (*) T = +1 indicates clustering of 'test' cells around 'ref' cells
+            (i.e. more attraction than 'ref' cells around 'ref' cells)
+    (*) T = -1 indicates dispersion of 'test' cells around 'ref' cells
+            (i.e. less attraction than 'ref' cells around 'ref' cells)
+
+    Parameters
+    ----------
+    - rcx: array of 'ref' coordinates (sample points)
+    - Ny: array of abundance of 'test' points at large scale 
+          (parental mean density)
+    - dy: 2D array with test point density at subkernel scale (raster of 
+                                                               densities to be
+                                                               sampled)
+    - kernel: kernel at which stats are calculated
+    """
+    
+    from scipy import special
+    
+    pout = np.full(Ny.shape, np.nan)
+    
+    if (len(rcx) > 0):
+        
+        D = Ny/(np.sum(kernel))
+        N = Ny.astype(int)
+        
+        # do t-test on array terms
+        md = fftconvolve(dy, kernel, mode='same')
+        md2 = fftconvolve(np.multiply(dy, dy), kernel, mode='same')
+        m2d = np.divide(np.multiply(md, md), N, 
+                        out=np.full(N.shape, np.nan), where=(N > 0))   
+        t = np.divide(md - np.multiply(D, N), 
+                      np.sqrt(md2 - m2d), 
+                      out=np.full(N.shape, np.nan), where=(N > 0))  
+        
+        p = np.full(Ny.shape, np.nan)
+        
+        # for elements with N > 30 use normal distribution approximation
+        (r,c) = np.where(N>30)
+        p[r,c] = 2*(1 - special.ndtr(np.abs(t[r,c])))
+        
+        # for elements with N > 30 use normal distribution approximation
+        (r,c) = np.where(N<30)
+        p[r,c] =2*(1 - special.stdtr(N[r,c], np.abs(t[r,c])))
+        
+        # this part is slow, so using only 100 replicants
+        #s = np.random.standard_t(N, (100, N.shape[0], N.shape[1]))
+        #p = np.divide(np.sum(s < t, axis=0), N, 
+        #              out=np.full(N.shape, np.nan), where=(N > 0))  
+        
+        pout = np.sign(t)*(p < 0.05)
+        
+    return(pout)
+
+
 def ripleys_K(rc, n):
     """
     Ripley's K index of all points in landscape
@@ -724,8 +832,10 @@ def ripleys_K_array(rc, n, N, kernel):
     Array form, evaluated in each kernel, of Regular Ripley's K(r) function
     evaluated at r given by subkernel scale:
     (*) K ~ pi*r^2 indicates uniform distribution of points across kernel
+        i.e. indicates evidence of Complete Spatial Randomness (CSR)
     (*) K > pi*r^2 indicates clustering of points at subkernel scale in kernel
-    (*) K < pi*r^2 indicates dispersion of points at subkernel scale in kernel
+    (*) K < pi*r^2 indicates dispersion  of points at subkernel scale in kernel
+        i.e. this indicates a more regular process than expected from CSR
 
     Parameters
     ----------

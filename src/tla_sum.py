@@ -81,7 +81,7 @@ class Study:
             
             f = os.path.join(res_pth, sid + '_lme_tbl.csv')
             if not os.path.exists(f):
-                print("WARNING: sample: " + sid + " was droped from TLA!")
+                print("WARNING: sample: " + sid + " was dropped from TLA!")
             else: 
                 
                 self.lme_stats = pd.concat([self.lme_stats, 
@@ -154,7 +154,7 @@ def loadToWide(f, sid, metric, comp):
         aux[comp] = aux[comp].str.replace('::','_')
         aux['cc'] = metric + "_" + aux[comp].astype(str) + "_" + c
         auy = pd.pivot(aux, 
-                       index=None,
+                       #index=None,
                        columns='cc', 
                        values=c)
         auy.insert(0, 'sample_ID', sid)
@@ -176,7 +176,7 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
+        argsfile = os.path.join(main_pth, 'TNBC.csv')
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
