@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from argparse import ArgumentParser
 
-__version__  = "1.2.0"
+__version__  = "1.1.0"
 
 
 # %% Private classes
@@ -56,7 +56,7 @@ class Study:
       # bandwidth size for convolutions is half the quadrat size
       self.supbw = int(self.binsiz/2)
       self.bw = int(self.subbinsiz/2)
-      
+
       # reduces classes df to just the accepted types (i.e. `drop=False`)
       classes_file = os.path.join(self.raw_path, study['raw_classes_table'])
       if not os.path.exists(classes_file):

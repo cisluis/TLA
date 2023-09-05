@@ -31,7 +31,7 @@ from myfunctions import printProgressBar, plotRGB
 
 Image.MAX_IMAGE_PIXELS = 600000000
 
-__version__  = "1.2.0"
+__version__  = "1.0.0"
 
 # %% Private classes
 

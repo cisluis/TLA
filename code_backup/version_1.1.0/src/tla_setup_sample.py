@@ -34,7 +34,7 @@ from argparse import ArgumentParser
 
 Image.MAX_IMAGE_PIXELS = 600000000
 
-__version__  = "1.2.0"
+__version__  = "1.1.0"
 
 
 # %% Private classes
@@ -235,17 +235,9 @@ class Sample:
       cxy['class'] = cxy['class'].astype(str)
       cxy = cxy.loc[cxy['class'].isin(self.classes['class'])]
       
-      # # estimates the NN distances between all cells
-      # from scipy.spatial import KDTree
-      # rc = np.array(cxy[['x', 'y']])
-      # dnn, _ = KDTree(rc).query(rc, k=[2])
-      # dmin = np.min(dnn)  
-      # if dmin > 2:
-      #     self.factor = self.factor*(2/dmin)
-          
       # updates coordinae values by conversion factor (from pix to xip)
-      cxy.x, cxy.y = np.int32(cxy.x*self.factor), np.int32(cxy.y*self.factor)  
-          
+      cxy.x, cxy.y = np.int32(cxy.x*self.factor), np.int32(cxy.y*self.factor)
+
       # gets extreme pixel values
       xmin, xmax = np.min(cxy.x), np.max(cxy.x)
       ymin, ymax = np.min(cxy.y), np.max(cxy.y)
@@ -587,7 +579,6 @@ class Sample:
       if redo or not os.path.exists(fout):
  
           from scipy.signal import fftconvolve
-          #from cupyx.scipy.signal import fftconvolve
           from myfunctions import circle
     
           abuarr = np.full((self.imshape[0], self.imshape[1], 
@@ -780,8 +771,7 @@ class Sample:
         fout = self.spafac_file
         if redo or not os.path.exists(fout):
         
-            #from scipy.signal import fftconvolve
-            from cupyx.scipy.signal import fftconvolve
+            from scipy.signal import fftconvolve
             from myfunctions import circle, nndist, attraction_T_biv
             from myfunctions import ripleys_K, ripleys_K_biv
             
@@ -985,12 +975,12 @@ class Sample:
       """
       from itertools import combinations, permutations, product
       from scipy.spatial import KDTree
-            
+      
       # general properties
       N = len(self.cell_data)
       A = np.sum(self.roiarr)
       roi_area = round(A*self.scale*self.scale, 4)
-            
+      
       # update sample table
       self.tbl['num_cells'] = N
       self.tbl['shape'] = self.imshape
@@ -1006,7 +996,6 @@ class Sample:
       rc = np.array(self.cell_data[['row', 'col']])
       dnn, _ = KDTree(rc).query(rc, k=[2])
       dnnqs = np.quantile(dnn, [0,0.25,0.5,0.75,1])     
-      
       
       stats = self.tbl[['sample_ID', 'num_cells']]
       stats['total_area'] = self.imshape[0]*self.imshape[1]
@@ -1124,7 +1113,7 @@ class Sample:
       [ar, redges, cedges, xedges, yedges] = plotEdges(self.imshape, 
                                                        self.binsiz, 
                                                        self.scale)
-       
+      
       C, R = np.meshgrid(np.arange(0, self.imshape[1], 1),
                          np.arange(0, self.imshape[0], 1))
       grid = np.stack([R.ravel(), C.ravel()]).T
@@ -1143,8 +1132,7 @@ class Sample:
               landscapeScatter(ax, aux.x, aux.y, 
                                row.class_color, row.class_name,
                                self.units, xedges, yedges, 
-                               spoint=5*self.rcell, 
-                               fontsiz=18)
+                               spoint=5*self.rcell, fontsiz=18)
               j = j + 1
       if (j % 2) != 0:
           ax.grid(which='major', linestyle='--', 
@@ -1158,15 +1146,14 @@ class Sample:
                 # loc='upper left',
                 # loc='upper left', bbox_to_anchor=(1, 1),
                 markerscale=3, fontsize=16, facecolor='w', edgecolor='k')
-      
 
       plt.savefig(os.path.join(self.res_pth, 
                                self.sid + '_landscape_points.png'),
                   bbox_inches='tight', dpi=300)
       plt.close()
 
-      fig, ax = plt.subplots(1, len(classes), 
-                             figsize=(12*len(classes), math.ceil(12/ar)),
+      fig, ax = plt.subplots(len(classes), 1,
+                             figsize=(12, len(classes)*math.ceil(12/ar)),
                              facecolor='w', edgecolor='k')
       for i, row in classes.iterrows():
           aux = self.cell_data.loc[self.cell_data['class'] == row['class']]
@@ -1174,9 +1161,7 @@ class Sample:
               landscapeScatter(ax[i], aux.x, aux.y, 
                                row.class_color, row.class_name,
                                self.units, xedges, yedges, 
-                               spoint=5*self.rcell, 
-                               fontsiz=18)
-          ax[i].contour(x, y, self.roiarr, [.50], linewidths=2, colors='black')
+                               spoint=2*self.rcell, fontsiz=18)
           ax[i].set_title(row.class_name, fontsize=18, y=1.02)
           ax[i].set_xlim([lims[0], lims[1]])
           ax[i].set_ylim([lims[2], lims[3]])
@@ -1302,7 +1287,7 @@ class Sample:
                                    self.sid + '_landscape.png'),
                       bbox_inches='tight', dpi=300)
           plt.close()
-          
+       
           
   def plot_landscape_simple(self, inx, lims):
       """
@@ -1516,8 +1501,7 @@ def getCellSize(cell_arr, r):
 
     """
 
-    #from scipy.signal import fftconvolve
-    from cupyx.scipy.signal import fftconvolve
+    from scipy.signal import fftconvolve
     from myfunctions import circle
 
     # produces a box-circle kernel
@@ -1585,10 +1569,10 @@ def main(args):
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'PC.csv')
+        argsfile = os.path.join(main_pth, 'TNBC.csv')
         REDO = True
         GRPH = True
-        CASE = 0
+        CASE = 15
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -1678,7 +1662,10 @@ def main(args):
     
     # %%STEP 10: if sample is already pre-processed read data
     else:
+        
         print(msg + " >>> loading data..." )
+            
+        # STEP 10: if sample is already pre-processed read data
         sample.load_data()
         
         extent = [0, sample.imshape[1]*sample.scale,

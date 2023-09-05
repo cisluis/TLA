@@ -32,7 +32,7 @@ from myfunctions import mkdirs
 
 Image.MAX_IMAGE_PIXELS = 600000000
 
-__version__  = "1.2.0"
+__version__  = "1.1.0"
 
 
 # %% Private classes
@@ -1325,7 +1325,6 @@ def getLMEclasses(classes_file):
                           converters={'abundance_edges': literal_eval,
                                       'mixing_edges': literal_eval})
     classes['class'] = classes['class'].astype(str)
-    
 
     nedges = classes['abundance_edges']
     medges = classes['mixing_edges']
@@ -2514,17 +2513,17 @@ def main(args):
 
     """
     # %% debug starts
-    debug = True
+    debug = False
 
     
     if debug:
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'PC_1.csv')
+        argsfile = os.path.join(main_pth, 'TNBC.csv')
         REDO = True
         GRPH = True
-        CASE = 0
+        CASE = 15
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -2554,7 +2553,6 @@ def main(args):
           "/" + str(len(study.samples.index)) + \
           "] :: SID <- " + sid 
           
-    # %% 
     if (sample.num_cells > 0):
         
         # output sample data filenames
