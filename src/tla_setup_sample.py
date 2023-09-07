@@ -34,7 +34,7 @@ from argparse import ArgumentParser
 
 Image.MAX_IMAGE_PIXELS = 600000000
 
-__version__  = "1.2.0"
+__version__  = "1.1.1"
 
 
 # %% Private classes
@@ -586,8 +586,7 @@ class Sample:
       fout = self.abumix_file
       if redo or not os.path.exists(fout):
  
-          from scipy.signal import fftconvolve
-          #from cupyx.scipy.signal import fftconvolve
+          from scipy.signal import convolve
           from myfunctions import circle
     
           abuarr = np.full((self.imshape[0], self.imshape[1], 
@@ -612,11 +611,11 @@ class Sample:
                   msk = 1.0*(x > 0)
         
                   # dispersion in local abundance
-                  xx = fftconvolve(np.multiply(x, x), kernel, mode='same')
+                  xx = convolve(np.multiply(x, x), kernel, mode='same')
                   xx[msk == 0] = 0
         
                   # number of cells in kernel (local abundance)
-                  N = fftconvolve(x, kernel, mode='same')
+                  N = convolve(x, kernel, mode='same')
                   N[msk == 0] = np.nan
                   
                   # calculates the MH univariate index
@@ -780,8 +779,7 @@ class Sample:
         fout = self.spafac_file
         if redo or not os.path.exists(fout):
         
-            #from scipy.signal import fftconvolve
-            from cupyx.scipy.signal import fftconvolve
+            from scipy.signal import convolve
             from myfunctions import circle, nndist, attraction_T_biv
             from myfunctions import ripleys_K, ripleys_K_biv
             
@@ -817,7 +815,7 @@ class Sample:
                     ptdens[i] = len(aux)/A
                     X[aux.row, aux.col, i] = 1
                     for k, r in enumerate(self.rs):
-                        auy = fftconvolve(X[:, :, i], circle(r), mode='same')
+                        auy = convolve(X[:, :, i], circle(r), mode='same')
                         n[:,:,i,k] = np.abs(np.rint(auy))
                                                           
             rsp = list(np.around(np.array(self.rs) * self.scale, decimals=2))
@@ -1516,8 +1514,7 @@ def getCellSize(cell_arr, r):
 
     """
 
-    #from scipy.signal import fftconvolve
-    from cupyx.scipy.signal import fftconvolve
+    from scipy.signal import convolve
     from myfunctions import circle
 
     # produces a box-circle kernel
@@ -1525,7 +1522,7 @@ def getCellSize(cell_arr, r):
 
     # convolve array of cell locations with kernel
     # (ie. number of cells inside circle centered in each pixel)
-    N = fftconvolve(cell_arr, circ)
+    N = convolve(cell_arr, circ)
 
     # the typical area of a cell
     # (given by maximun number of cells in any circle)

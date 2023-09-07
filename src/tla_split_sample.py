@@ -24,7 +24,7 @@ from argparse import ArgumentParser
 
 Image.MAX_IMAGE_PIXELS = 600000000
 
-__version__  = "1.2.0"
+__version__  = "1.1.1"
 
 
 # %% Private classes

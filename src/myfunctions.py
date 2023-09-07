@@ -10,10 +10,9 @@ import numpy as np
 import scipy.stats as sts
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from KDEpy import FFTKDE
-from scipy.signal import fftconvolve
-#from cupyx.scipy.signal import fftconvolve
+from scipy.signal import convolve
 
+__version__  = "1.1.1"
 
 def mkdirs(path):
     # create folder if it doesn't exist
@@ -83,68 +82,16 @@ def gkern(sig):
     
     l = 5.0*sig
     
-    ax = np.linspace(-(l - 1) / 2., (l - 1) / 2., l)
-    gauss = np.exp(-0.5 * np.square(ax) / np.square(sig))
+    aux = np.arange(-(l - 1) / 2., ((l - 1) / 2.) + 1)
+    gauss = np.exp(-0.5 * np.square(aux) / np.square(sig))
     kernel = np.outer(gauss, gauss)
-    return kernel / np.sum(kernel)
+    return (kernel / np.sum(kernel))
 
 
-def KDE(data_in, shape, bw, rbins=1, cbins=1):
+def KDE(data, shape, bw):
     """
     Evaluates a KDE using a convolution with a Fast Fourier Transform (FFT)
-
-    Parameters
-    ----------
-    - data: (pandas df) TLA dataframe of cell coordinates
-    - shape: (tuple) shape in pixels of TLA landscape
-    - bw : (float) bandwidth; standard deviation of the KDE (gaussian) kernel
-
-    References
-    ----------
-    - https://kdepy.readthedocs.io/en/latest/_modules/KDEpy/FFTKDE.html
-    - Wand, M. P., and M. C. Jones. Kernel Smoothing.
-      London ; New York: Chapman and Hall/CRC, 1995. Pages 182-192.
-    """
-
-    C, R = np.meshgrid(np.arange(-cbins, shape[1] + cbins, cbins),
-                        np.arange(-rbins, shape[0] + rbins, rbins))
-    grid = np.stack([R.ravel(), C.ravel()]).T
-
-    # get data points are inside of the grid
-    data  = data_in.loc[(data_in['row'] > np.min(grid[:, 0])) &
-                        (data_in['row'] < np.max(grid[:, 0])) &
-                        (data_in['col'] > np.min(grid[:, 1])) &
-                        (data_in['col'] < np.max(grid[:, 1]))]
-    
-                          
-    # Compute the kernel density estimate
-    coords = np.array(data[['row', 'col']])
-    
-    # min_grid = np.min(grid, axis=0)
-    # max_grid = np.max(grid, axis=0)
-    # min_data = np.min(coords, axis=0)
-    # max_data = np.max(coords, axis=0)
-    # if not ((min_grid < min_data).all() and (max_grid > max_data).all()):
-    #     print([min_grid, max_grid, min_data, max_data])
-    #     raise ValueError("Every data point must be inside of the grid.")
-    
-    points = FFTKDE(kernel='gaussian', bw=bw).fit(coords).evaluate(grid)
-
-    # normalizes the output to cells per grid unit
-    points = len(data)*(points/sum(points))
-
-    # grid has shape (obs, dims), points has shape (obs, 1)
-    row, col = np.unique(grid[:, 0]), np.unique(grid[:, 1])
-    z = points.reshape([len(row), len(col)])
-    row, col, z = row[1:-1], col[1:-1], z[1:-1, 1:-1]
-
-    return([row, col, z])
-
-
-def KDE_array(data, shape, bw):
-    """
-    Evaluates a KDE using a convolution with a Fast Fourier Transform (FFT)
-    using array convolution 'fftconvolve' from scipy.signal 
+    using array convolution 'convolve' from scipy.signal
 
     Parameters
     ----------
@@ -153,25 +100,13 @@ def KDE_array(data, shape, bw):
     - bw : (float) bandwidth; standard deviation of the KDE (gaussian) kernel
 
     """
-    
-    def gkern(sig):
-        """\
-        creates full gaussian kernel with a sigma of `sig`
-        """
-        l = np.ceil(3*sig)
-        ax = np.linspace(-(l - 1) / 2., (l - 1) / 2., l)
-        gauss = np.exp(-0.5 * np.square(ax) / np.square(sig))
-        kernel = np.outer(gauss, gauss)
-        return kernel / np.sum(kernel)
 
     arr = np.zeros((shape[0], shape[1]))
     coords = np.array(data[['row', 'col']])
-    arr[coords] = 1
-    
-    kernel = gkern(bw)
+    arr[coords[:,0], coords[:,1]] = 1
     
     # Compute the kernel density estimate
-    points = fftconvolve(arr, kernel, mode='same')
+    points = convolve(arr, gkern(bw), mode='same')
 
     # normalizes the output to cells per grid unit
     points = len(data)*(points/sum(points))
@@ -253,7 +188,6 @@ def kdeLevels(data, shape, bw, all_cells=True, toplev=1.0):
 
     # Compute the kernel density estimate
     [r, c, z] = KDE(data, shape, bw)
-    #[r, c, z] = KDE_array(data, shape, bw)
 
     # threshold for landscape edge
     aux = np.around(np.log10(z), 2)
@@ -546,9 +480,9 @@ def morisita_horn_array(x, y, kernel):
     """
 
     # dispersion in x and y abundance
-    xx = np.rint(fftconvolve(np.multiply(x, x), kernel, mode='same'))
-    yy = np.rint(fftconvolve(np.multiply(y, y), kernel, mode='same'))
-    xy = np.rint(fftconvolve(np.multiply(x, y), kernel, mode='same'))
+    xx = np.rint(convolve(np.multiply(x, x), kernel, mode='same'))
+    yy = np.rint(convolve(np.multiply(y, y), kernel, mode='same'))
+    xy = np.rint(convolve(np.multiply(x, y), kernel, mode='same'))
     den = xx + yy
 
     # Morisita Index (colocalization score)
@@ -574,10 +508,10 @@ def getis_ord_g_array(X, msk):
     box[1, 1] = 0
 
     # local number of neighbors in each pixel
-    sw = np.rint(fftconvolve(msk, box, mode='same')[msk > 0])
+    sw = np.rint(convolve(msk, box, mode='same')[msk > 0])
 
     # weighted sum of x in each neighborhood
-    wx = np.rint(fftconvolve(X, box, mode='same')[msk > 0])
+    wx = np.rint(convolve(X, box, mode='same')[msk > 0])
 
     # x values in the roi
     x = X[msk > 0]
@@ -691,7 +625,7 @@ def nndist_array(rcx, rcy, N, kernel):
         nnarr[rcx[:, 0], rcx[:, 1]] = dnnxx[:, 0]
 
         # local mean of NNdistance (dividing by local number of ref cells)
-        aux = fftconvolve(nnarr, kernel, mode='same')
+        aux = convolve(nnarr, kernel, mode='same')
         aux[aux < 0] = 0
         mdnnxx = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
         
@@ -704,7 +638,7 @@ def nndist_array(rcx, rcy, N, kernel):
             nnarr[rcx[:, 0], rcx[:, 1]] = dnnxy[:, 0]
 
             # local mean of NNdistance (dividing by local number of ref cells)
-            aux = fftconvolve(nnarr, kernel, mode='same')
+            aux = convolve(nnarr, kernel, mode='same')
             aux[aux < 0] = 0
             mdnnxy = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
 
@@ -798,8 +732,8 @@ def attraction_T_array_biv(rcx, Ny, dy, kernel):
         N = Ny.astype(int)
         
         # do t-test on array terms
-        md = fftconvolve(dy, kernel, mode='same')
-        md2 = fftconvolve(np.multiply(dy, dy), kernel, mode='same')
+        md = convolve(dy, kernel, mode='same')
+        md2 = convolve(np.multiply(dy, dy), kernel, mode='same')
         m2d = np.divide(np.multiply(md, md), N, 
                         out=np.full(N.shape, np.nan), where=(N > 0))   
         t = np.divide(md - np.multiply(D, N), 
@@ -897,7 +831,7 @@ def ripleys_K_array(rc, n, N, kernel):
         npairs = np.multiply(N, N - 1)/2
     
         # Ripley's K sum (do sum of Ir for each kernel)
-        aux = np.rint(fftconvolve(Ir, kernel, mode='same'))
+        aux = np.rint(convolve(Ir, kernel, mode='same'))
         ripley = np.sum(kernel) * np.divide(aux, npairs,
                                             out=np.zeros(Ir.shape),
                                             where=(npairs > 0))     
@@ -979,7 +913,7 @@ def ripleys_K_array_biv(rcx, nx, Nx, ny, Ny, kernel):
         npairs = np.multiply(Nx, Ny)
 
         # Ripley's K sum (do sum of Ir for each kernel)
-        aux = np.abs(np.rint(fftconvolve(Ir, kernel, mode='same')))
+        aux = np.abs(np.rint(convolve(Ir, kernel, mode='same')))
         ripley = np.sum(kernel) * np.divide(aux, npairs,
                                             out=np.zeros(Ir.shape),
                                             where=(npairs > 0))

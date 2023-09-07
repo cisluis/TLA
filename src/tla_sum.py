@@ -18,7 +18,7 @@ import pandas as pd
 from ast import literal_eval
 from argparse import ArgumentParser
 
-__version__  = "1.2.0"
+__version__  = "1.1.1"
 
 
 # %% Private classes

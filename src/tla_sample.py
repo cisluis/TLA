@@ -32,7 +32,7 @@ from myfunctions import mkdirs
 
 Image.MAX_IMAGE_PIXELS = 600000000
 
-__version__  = "1.2.0"
+__version__  = "1.1.1"
 
 
 # %% Private classes
@@ -249,7 +249,7 @@ class Landscape:
 
       """
       
-      from scipy.signal import fftconvolve
+      from scipy.signal import convolve
       from myfunctions import getis_ord_g_array, morisita_horn_array
       from myfunctions import nndist_array, circle, attraction_T_array_biv
       from myfunctions import ripleys_K_array, ripleys_K_array_biv
@@ -366,9 +366,9 @@ class Landscape:
               aux = data.loc[data['class'] == case]
               X[aux.row, aux.col, i] = 1
               
-              N[:, :, i] = np.abs(np.rint(fftconvolve(X[:, :, i],
+              N[:, :, i] = np.abs(np.rint(convolve(X[:, :, i],
                                                       circ, mode='same')))
-              n[:, :, i] = np.abs(np.rint(fftconvolve(X[:, :, i],
+              n[:, :, i] = np.abs(np.rint(convolve(X[:, :, i],
                                                       subcirc, mode='same')))
           
           # loop thru all combinations of classes (pair-wise comparisons)
