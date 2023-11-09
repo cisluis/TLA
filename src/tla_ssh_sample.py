@@ -14,157 +14,352 @@
 import os
 import sys
 import math
-
+import time
 import pandas as pd
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
-import pickle
 
-from skimage import io
 from PIL import Image
 from ast import literal_eval
 
 from argparse import ArgumentParser
 
-from myfunctions import printProgressBar, plotRGB
+from myfunctions import printProgressBar, plotRGB, mkdirs
 # from itertools import combinations, permutations, product
 
+if torch.cuda.is_available(): 
+    ISCUDA = True
+else:
+    ISCUDA = False
+    
 Image.MAX_IMAGE_PIXELS = 600000000
 
-__version__  = "1.2.0"
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:10240"
+
+__version__  = "2.0.0"
 
 # %% Private classes
-
+    
 class Study:
     
-  def __init__(self, study, main_pth):
+    def __init__(self, study, main_pth):
+        
+        # loads arguments for this study
+        self.name = study['name']
+        f = os.path.join(main_pth, study['data_path'])
+        if not os.path.exists(f):
+            print("ERROR: data folder " + f + " does not exist!")
+            print("... Please run << TLA >> for this study!")
+            sys.exit()
+        self.dat_pth = f
+              
+        f = os.path.join(self.dat_pth, study['name'] + '_classes.csv')
+        if not os.path.exists(f):
+            print("ERROR: classes file " + f + " does not exist!")
+            sys.exit()
+        self.classes = getLMEclasses(f)
+             
+        # list of samples is read from 'tla_sub_samples.csv' if it exist, 
+        # otherwise reads directly from the original list for the study 
+        f = os.path.join(self.dat_pth, 'ssh_sub_samples.csv')
+        if not os.path.exists(f):
+            f = os.path.join(self.dat_pth, study['name'] + '_samples.csv')
+            if not os.path.exists(f):
+                print("ERROR: samples file " + f + " does not exist!")
+                sys.exit()
+        self.samples = pd.read_csv(f)  
+        
+        # list of processed samples
+        self.done_list = os.path.join(self.dat_pth, 'ssh_done_samples.csv')
+        # scale parameters
+        self.factor = np.float32(1.0)
+        if 'factor' in study:
+            self.factor = study['factor']
+        self.scale = np.float32(study['scale']/self.factor)
+        self.units = study['units']
+        
+        # the size of quadrats and subquadrats
+        aux = 4*np.ceil((study['binsiz']/self.scale)/4)
+        self.binsiz = np.rint(aux).astype('int32')
+        self.subbinsiz = np.rint(self.binsiz/4).astype('int32')
+        
+        # bandwidth size for convolutions is half the quadrat size
+        self.kernel = np.rint(self.binsiz/2).astype('int32')
+        self.subkernel = np.rint(self.subbinsiz/2).astype('int32')
+        
+        # creates samples table for output
+        self.samples_out = pd.DataFrame()
+        
+        # analyses table
+        df = pd.read_csv(os.path.join(self.dat_pth,
+                                      self.name + '_analyses.csv'),
+                                    converters={'comps': literal_eval}) 
+        # drop Attraction Enrichment Functions score from analysis
+        # (NEED TO FIX A BUG IN THE CALCULATION)
+        df.loc[df['name']== 'aefunc', 'drop'] = True
+        
+        self.analyses = df.loc[~df['drop']]
+        self.donefacts = self.analyses['name'].tolist()
       
-      # loads arguments for this study
-      self.name = study['name']
-      self.dat_pth = os.path.join(main_pth, study['data_path'])
-      if not os.path.exists(self.dat_pth):
-          print("ERROR: data folder " + self.dat_pth + " does not exist!")
-          print("... Please run << TLA setup >> for this study!")
-          sys.exit()
+    def getSample(self, i):
+        
+        # get sample entry from samples df
+        sample = self.samples.iloc[i].copy()
+        
+        if (sample.num_cells == ''):
+            sample.num_cells = 0
+              
+        # check that results dir exist
+        f = os.path.join(self.dat_pth, sample['results_dir'])
+        if not os.path.exists(f):
+            print("ERROR: data folder " + f + " does not exist!")
+            print("... Please run << TLA setup >> for this study!")
+            sys.exit()
+        sample['res_pth'] = f    
+        
+        return(sample)    
       
-      aux = os.path.join(self.dat_pth, study['name'] + '_classes.csv')
-      if not os.path.exists(aux):
-          print("ERROR: classes file " + aux + " does not exist!")
-          sys.exit()
-      self.classes = getLMEclasses(aux)
-      
-      aux = os.path.join(self.dat_pth, study['name'] + '_samples.csv')
-      if not os.path.exists(aux):
-          print("ERROR: samples file " + aux + " does not exist!")
-          sys.exit()
-      self.samples = pd.read_csv(aux)
-     
-      # the size of quadrats and subquadrats
-      self.binsiz = int((study['binsiz']))
-      self.subbinsiz = int(self.binsiz/5)
-    
-      # bandwidth size for convolutions is half the quadrat size
-      self.kernel = int(self.binsiz/2)
-      self.subkernel = int(self.subbinsiz/2)
-      self.scale = study['scale']
-      self.units = study['units']
-      
-      # creates samples table for output
-      self.samples_out = pd.DataFrame()
-      
-      # analyses table
-      self.analyses = pd.read_csv(os.path.join(self.dat_pth,
-                                               self.name + '_analyses.csv'),
-                                  converters={'comps': literal_eval}) 
-      
-      
+  
 class Landscape:
     
-  def __init__(self, sample, study):
+    def __init__(self, sample, study, strata):
+        
+        dat_pth = study.dat_pth
       
-      dat_pth = study.dat_pth
+        self.sid = sample.sample_ID
+        self.res_pth = sample['res_pth']
+        self.out_pth = mkdirs(os.path.join(self.res_pth, 'ssh'))
+        
+        f = os.path.join(self.res_pth, self.sid +'_classes.csv')
+        if not os.path.exists(f):
+            print("ERROR: classes file " + f + " does not exist!")
+            sys.exit()
+        aux = pd.read_csv(f)
+        aux['class'] = aux['class'].astype(str)
+        self.classes = pd.merge(aux, 
+                                study.classes[['class', 
+                                               'abundance_edges', 
+                                               'mixing_edges']], 
+                                how="left",
+                                on=['class'])
+        
+        f = os.path.join(dat_pth, sample['coord_file'])
+        if not os.path.exists(f):
+            print("ERROR: data file " + f + " does not exist!")
+            sys.exit()
+        self.cell_data = pd.read_csv(f)
+        self.ncells = len(self.cell_data)
+        
+        # general attributes
+        self.binsiz = study.binsiz
+        self.subbinsiz = study.subbinsiz 
+        self.kernel =  study.kernel
+        self.subkernel = study.subkernel
+        self.scale = study.scale
+        self.units = study.units
+        
+        # raster images
+        pth = os.path.join(study.dat_pth, 'rasters', self.sid)
+        
+        f = os.path.join(pth, self.sid + '_roi.npz')
+        if not os.path.exists(f):
+            print("ERROR: raster file " + f + " does not exist!")
+            sys.exit()
+        aux = np.load(f)
+        self.roiarr = aux['roi'].astype('bool') # ROI raster
+        self.imshape = np.int32(self.roiarr.shape)
+        
+        # more raster attributes
+        self.mask_file = os.path.join(pth, self.sid + '_mask.npz')
+        self.lme_file = os.path.join(pth, self.sid + '_lme.npz')  
+        self.abumix_file = os.path.join(dat_pth, sample['abumix_file'])
+        self.coloc_file = os.path.join(pth, self.sid + '_coloc.npz')  
+        self.nndist_file = os.path.join(pth, self.sid + '_nndist.npz') 
+        self.aefunc_file = os.path.join(pth, self.sid + '_aefunc.npz')  
+        self.rhfunc_file = os.path.join(pth, self.sid + '_rhfunc.npz')  
+        self.geordG_file = os.path.join(pth, self.sid + '_geordG.npz')  
+       
+        # # slide image
+        # img = None
+        # f = os.path.join(dat_pth, sample['image_file'])
+        # if (sample['image_file'] != '' and os.path.exists(f)):
+        #     img = np.uint8(io.imread(f))
+        # self.img = img
+        
+        # pylandstats landscape object
+        self.plsobj = []
       
-      self.sid = sample.sample_ID
-      self.res_pth = os.path.join(dat_pth, sample['results_dir'])
-      
-      aux = os.path.join(self.res_pth, 'classes.csv')
-      if not os.path.exists(aux):
-          print("ERROR: classes file " + aux + " does not exist!")
-          sys.exit()
-      self.classes = pd.merge(pd.read_csv(aux), 
-                              study.classes, 
-                              how="left",
-                              on=['class', 'class_name',
-                                  'class_val', 'class_color']).fillna(0)
-      
-      aux = os.path.join(dat_pth, sample['coord_file'])
-      if not os.path.exists(aux):
-          print("ERROR: data file " + aux + " does not exist!")
-          sys.exit()
-      self.cell_data = pd.read_csv(aux)
-      self.ncells = len(self.cell_data)
-      
-      # general attributes
-      self.binsiz = study.binsiz
-      self.subbinsiz = study.subbinsiz 
-      self.kernel =  study.kernel
-      self.subkernel = study.subkernel
-      self.scale = study.scale
-      self.units = study.units
-      
-      # loads all raster images
-      fil = os.path.join(dat_pth, sample['raster_file'])
-      if not os.path.exists(fil):
-          print("ERROR: raster file " + fil + " does not exist!")
-          sys.exit()
-      aux = np.load(fil)
-      self.roiarr = aux['roi'] # ROI raster
-      self.kdearr = aux['kde'] # KDE raster (smoothed density landscape)
-      self.abuarr = aux['abu'] # local abundances of each class
-      self.mixarr = aux['mix'] # local mixing values of each class
-      self.imshape = self.roiarr.shape
-      
-      # slide image
-      img = None
-      if (sample['image_file'] != ''):
-          img = io.imread(os.path.join(dat_pth, sample['image_file']))
-      self.img = img
-
-      # loads blob mask
-      msk = None
-      if (sample['mask_file'] != ''):
-          msk = np.load(os.path.join(dat_pth, sample['mask_file']))['mask']
-      self.msk = msk
-      
-      # more raster attributes
-      self.lmearr = []     # LME raster
-      self.colocarr = []   # Colocalization array
-      self.nndistarr = []  # NNDist array
-      self.rhfuncarr = []  # Ripley's H array
-      self.geordGarr = []  # Getis Ord G* arra
-      self.hotarr = []     # HOT array
-      
-      # pylandstats landscape object
-      self.plsobj = []
+        self.lmes = []
+        if 'LME' in strata:
+          # loads lme raster image
+          f = self.lme_file
+          if not os.path.exists(f):
+              print("ERROR: raster file " + f + " does not exist!")
+              sys.exit()
+          aux = np.load(f)
+          arr = aux['lme']
+          arr[arr == np.nan] = 0
+          self.lmes = np.uint8(arr)
+          
+        self.blobs = []
+        if 'Blob' in strata:
+           # loads lme raster image
+           f = self.mask_file
+           if not os.path.exists(f):
+               print("ERROR: raster file " + f + " does not exist!")
+               sys.exit()
+           aux = np.load(f)
+           arr = aux['roi']
+           arr[arr == np.nan] = 0
+           self.blobs = np.uint32(arr)
+    
+        del aux 
 
     
-# %% Private Functions
+    def colocSSH(self, df, strata, do_plots):
+        
+        cps =  df.loc[df['name'] == 'coloc']['comps'].values[0]
+        comps = compIDX(cps, self.classes)
+        
+        # loads coloc raster image
+        f = self.coloc_file
+        if not os.path.exists(f):
+            print("ERROR: raster file " + f + " does not exist!")
+            sys.exit()
+        aux = np.load(f)
+        colocarr = np.float64(aux['coloc'])
+        
+        out_pth = mkdirs(os.path.join(self.out_pth, 'coloc'))
+        
+        tab = sshComps(self.sid, colocarr, self.imshape, 
+                     self.scale, self.units, self.subbinsiz,
+                     'coloc', comps, self.classes, 
+                     self.lmes, self.blobs, strata, 
+                     out_pth, do_plots, subset = True)
+        
+        del colocarr
+        
+        return(tab)
+    
+    
+    def nndistSSH(self, df, strata, do_plots):
+        
+        cps = df.loc[df['name'] == 'nndist']['comps'].values[0]
+        comps = compIDX(cps, self.classes)
+        
+        # loads nndist raster image
+        f = self.nndist_file
+        if not os.path.exists(f):
+            print("ERROR: raster file " + f + " does not exist!")
+            sys.exit()
+        aux = np.load(f)
+        nndistarr = np.float64(aux['nndist'])
+        
+        out_pth = mkdirs(os.path.join(self.out_pth, 'nndist'))
+                  
+        _ = sshComps(self.sid, nndistarr, self.imshape, 
+                     self.scale, self.units, self.subbinsiz,
+                     'nndist', comps, self.classes, 
+                     self.lmes, self.blobs, strata, 
+                     out_pth, do_plots, subset = True)
+        
+        del nndistarr        
+        
+        
+    def rhfuncSSH(self, df, strata, do_plots):
+        
+        cps = df.loc[df['name'] == 'rhfunc']['comps'].values[0]
+        comps = compIDX(cps, self.classes)
+        
+        # loads nndist raster image
+        f = self.rhfunc_file
+        if not os.path.exists(f):
+            print("ERROR: raster file " + f + " does not exist!")
+            sys.exit()
+        aux = np.load(f)
+        rhfuncarr = np.float64(aux['rhfunc'])
+        
+        out_pth = mkdirs(os.path.join(self.out_pth, 'rhfunc'))
+                  
+        _ = sshComps(self.sid, rhfuncarr, self.imshape, 
+                     self.scale, self.units, self.subbinsiz,
+                     'rhfunc', comps, self.classes, 
+                     self.lmes, self.blobs, strata, 
+                     out_pth, do_plots, subset = True)
+        
+        del rhfuncarr
+        
+        
+    def geordGSSH(self, df, strata, do_plots):
+        
+        cps = df.loc[df['name'] == 'geordG']['comps'].values[0]
+        comps = [getIndex(c, self.classes) for c in cps]
+        
+        # loads nndist raster image
+        f = self.geordG_file
+        if not os.path.exists(f):
+            print("ERROR: raster file " + f + " does not exist!")
+            sys.exit()
+        aux = np.load(f)
+        geordGarr = np.float64(aux['geordG'])
+        hotarr = np.float32(aux['hot'])
+        
+        out_pth = mkdirs(os.path.join(self.out_pth, 'geordG'))
+                  
+        _ = sshCases(self.sid, geordGarr, self.imshape, 
+                     self.scale, self.units, self.subbinsiz,
+                     'geordG', comps, self.classes, 
+                     self.lmes, self.blobs, strata, 
+                     out_pth, do_plots, subset = True)
+        
+        _ = sshCases(self.sid, hotarr, self.imshape, 
+                     self.scale, self.units, self.subbinsiz,
+                     'hot', comps, self.classes, 
+                     self.lmes, self.blobs, strata, 
+                     out_pth,  do_plots, subset = True)
+        
+        del geordGarr
 
-# %%%% Setup
+           
+    def abundSSH(self, strata, do_plots):
+        
+        comps = list(self.classes.index)
+      
+        # loads abundance raster image
+        f = self.abumix_file
+        if not os.path.exists(f):
+            print("ERROR: raster file " + f + " does not exist!")
+            sys.exit()
+        aux = np.load(f)
+        abuarr = np.float64(aux['abu'])
+        
+        out_pth = mkdirs(os.path.join(self.out_pth, 'abundance'))
+                  
+        _ = sshCases(self.sid, abuarr, self.imshape, 
+                     self.scale, self.units, self.subbinsiz,
+                     'abu', comps, self.classes, 
+                     self.lmes, self.blobs, strata, 
+                     out_pth, do_plots, subset = True)
+        
+        del abuarr          
+      
+# %% Private Functions
 
 def progressBar(i, n, step, Nsteps,  msg, msg_i):
     
     printProgressBar(Nsteps*i + step, Nsteps*n,
                      suffix=msg + ' ; ' + msg_i, length=50)
+
+
+def getIndex(c, df):
+    return(df.index[df['class'] == c].tolist()[0])
+
     
 def compIDX(comps, classes):
     
-    def getIndex(c, df):
-        return(df.index[df['class'] == c].tolist()[0])
-    
     comps_idx = [(getIndex(c[0], classes), 
-                  getIndex(c[1], classes)) for c in comps]
-    
+                  getIndex(c[1], classes)) for c in comps]    
     return(comps_idx)
     
 
@@ -232,23 +427,6 @@ def lmeCode(x, dim):
 
 # %%%% SSH Statistics functions
 
-def strataFormating(lmearr, msk, classes, strata):
-    
-    lmes = lmearr.copy()
-    if 'LME' in strata:
-        # format variables
-        lmes[np.isnan(lmes)] = 0
-        lmes = lmes.astype(int)
-    
-    blobs = msk.copy()
-    if 'Blob' in strata:
-        # format variables
-        blobs[np.isnan(blobs)] = 0
-        blobs = blobs.astype(int)
-    
-    return([lmes, blobs])
-
-
 def SSH(sid, data, classes, 
         fact_col, factlab, 
         strata_cols, strlabs, out_pth, do_plots):
@@ -261,9 +439,11 @@ def SSH(sid, data, classes,
     from myfunctions import SSH_ecological_detector_df
 
     # SSH, factor detector for both strata
-    sshtab = SSH_factor_detector_df(data, fact_col,  strata_cols)
+    sshtab = pd.DataFrame(SSH_factor_detector_df(data, 
+                                                 fact_col, 
+                                                 strata_cols))
     
-    if do_plots:
+    if (len(sshtab) > 0) and do_plots:
         fig, ax = sshPlotStratification(sshtab, data, factlab, strlabs)
         
         lmeticks = [lmeCode(x, len(classes)) for x in ax[0].get_xticks()]
@@ -278,7 +458,6 @@ def SSH(sid, data, classes,
     # SSH, significant risk differences between strata levels
     for stt in strata_cols:
         sshrsk = SSH_risk_detector_df(data, fact_col, stt)
-        
         if len(sshrsk) > 0:
             if stt == "LME":
                 aux = sshrsk['stratum_i']
@@ -286,12 +465,13 @@ def SSH(sid, data, classes,
                 sshrsk['stratum_i'] = [lmeCode(x, len(classes)) for x in aux]
                 aux = sshrsk['stratum_j']
                 sshrsk['stratum_j'] = sshrsk['stratum_i'].astype(str)
-                sshrsk['stratum_j'] = [lmeCode(x, len(classes)) for x in aux]    
-            sshrsk = sshrsk.loc[sshrsk['significance']]
-            fil = os.path.join(out_pth,
-                               sid + '_ssh_risk_' + fact_col + \
-                                   '-' + stt +'.csv')
-            sshrsk.to_csv(fil, index=False)
+                sshrsk['stratum_j'] = [lmeCode(x, len(classes)) for x in aux] 
+            sshrsk = sshrsk.loc[sshrsk['significance']]  
+            if len(sshrsk) > 0:
+                fil = os.path.join(out_pth,
+                                   sid + '_ssh_risk_' + fact_col + \
+                                       '-' + stt +'.csv')
+                sshrsk.to_csv(fil, index=False)
     
     sshint = pd.DataFrame()
     ssheco = pd.DataFrame()
@@ -326,6 +506,8 @@ def sshPlotStratification(sshtab, data, factlab, strlabs):
                        scale='count',
                        inner='box')
         sig = '(ns)'
+        if (row.p_value < 0.1):
+            sig = '(.)'
         if (row.p_value < 0.05):
             sig = '(*)'
         if (row.p_value < 0.01):
@@ -342,12 +524,12 @@ def sshPlotStratification(sshtab, data, factlab, strlabs):
         if (ntcks > 30):
             ax[np.unravel_index(i, shp)].set_xticks(tcks[::ntcks//30])
 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     
     return([fig, ax])
 
 
-def sshSubs(sid, raster, 
+def sshCases(sid, raster, 
             imshape, scale, units, binsiz, 
             field_name, comps, classes, 
             lmes, blobs, strata, 
@@ -355,6 +537,7 @@ def sshSubs(sid, raster,
     """
     """
     from joblib import Parallel, delayed
+    import warnings
     
     sshtab = pd.DataFrame()
     sshint = pd.DataFrame()
@@ -388,27 +571,38 @@ def sshSubs(sid, raster,
         fact = field_name + '_' + classes['class'][i]
         fact_name = field_name + '(' + classes['class_name'][i] + ')'
             
-        data = pd.DataFrame({fact: Y[inx]})
-        if 'LME' in strata:
-            data['LME'] = L[inx].astype(np.int16)
-            if do_plots:
-                plotFactorLandscape(sid, lmes, raster[:, :, i],
-                                    fact_name + ' in LMEs', fact_name,
-                                    imshape, scale, units, 5*binsiz, 
-                                    fact + '_lmes', out_pth)
+        aux = pd.DataFrame()
+        auy = pd.DataFrame()
+        auz = pd.DataFrame()
                 
-        if 'Blob' in strata:
-            data['Blob'] = B[inx].astype(np.int16)
-            if do_plots:
-                plotFactorLandscape(sid, blobs, raster[:, :, i],
-                                    fact_name + ' in Blobs', fact_name,
-                                    imshape, scale, units, 5*binsiz, 
-                                    fact + '_blobs', out_pth)
-        
-        # do SSH analysis on coloc factors
-        [aux, auy, auz] = SSH(sid, data, classes, 
-                              fact, fact_name, 
-                              strata, strata, out_pth, do_plots)
+        if (len(Y[inx])>0):
+            
+            data = pd.DataFrame({fact: Y[inx]})
+            
+            data = pd.DataFrame({fact: Y[inx]})
+            
+            if 'Blob' in strata:
+                data['Blob'] = B[inx].astype(np.uint32)
+                if do_plots:
+                    plotFactorLandscape(sid, blobs, raster[:, :, i],
+                                        fact_name + ' in Blobs', fact_name,
+                                        imshape, scale, units, 4*binsiz, 
+                                        fact + '_blobs', out_pth)
+            if 'LME' in strata:
+                data['LME'] = L[inx].astype(np.uint8)
+                data = data.loc[data['LME'] > 0]
+                if do_plots:
+                    plotFactorLandscape(sid, lmes, raster[:, :, i],
+                                        fact_name + ' in LMEs', fact_name,
+                                        imshape, scale, units, 4*binsiz, 
+                                        fact + '_lmes', out_pth)
+            
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                # do SSH analysis on coloc factors
+                [aux, auy, auz] = SSH(sid, data, classes, 
+                                      fact, fact_name, 
+                                      strata, strata, out_pth, do_plots)
         
         return([aux, auy, auz])
     
@@ -446,7 +640,7 @@ def sshSubs(sid, raster,
                                        field_name + '.csv'), 
                       index=False)
 
-    return(0)
+    return(sshtab)
 
 
 def sshComps(sid, raster, 
@@ -457,7 +651,7 @@ def sshComps(sid, raster,
     """
     """
     from joblib import Parallel, delayed
-    
+    import warnings
     
     sshtab = pd.DataFrame()
     sshint = pd.DataFrame()
@@ -472,21 +666,23 @@ def sshComps(sid, raster,
         cedges = cedges[:-1]
         
     if (subset):
-        R = np.array([raster[r, c, :, :] for r in redges for c in cedges])
+        R = np.array([raster[r, c, :] for r in redges for c in cedges])
         L = np.array([lmes[r, c] for r in redges for c in cedges])
         B = np.array([blobs[r, c] for r in redges for c in cedges])    
     else:
-        R = np.array([raster[r, c, :, :] for r in np.arange(imshape[0]) \
+        R = np.array([raster[r, c, :] for r in np.arange(imshape[0]) \
                       for c in np.arange(imshape[1])])
         L = np.array([lmes[r, c] for r in np.arange(imshape[0]) \
                       for c in np.arange(imshape[1])])
         B = np.array([blobs[r, c] for r in np.arange(imshape[0]) \
                       for c in np.arange(imshape[1])])
     
-    def func(comp):
+    def func(i):
+        
+        comp = comps[i]
         ia = comp[0]
         ib = comp[1]
-        Y = R[:, ia, ib]
+        Y = np.float64(R[:,i])
 
         # get valid values
         inx = ~np.isnan(Y)
@@ -495,29 +691,39 @@ def sshComps(sid, raster,
             classes['class'][ia] + '_' +  classes['class'][ib]
         fact_name = field_name + '(' + \
             classes['class_name'][ia] + ':' + classes['class_name'][ib] + ')'
-        
             
-        data = pd.DataFrame({fact: Y[inx]})
-        if 'LME' in strata:
-            data['LME'] = L[inx].astype(np.int16)
-            if do_plots:
-                plotFactorLandscape(sid, lmes, raster[:, :, ia, ib],
-                                    fact_name + ' in LMEs', fact_name,
-                                    imshape, scale, units, 5*binsiz, 
-                                    fact + '_lmes', out_pth)
+        aux = pd.DataFrame()
+        auy = pd.DataFrame()
+        auz = pd.DataFrame()
+        
+        if (len(Y[inx])>0):
+            
+            data = pd.DataFrame({fact: Y[inx]})
+            if 'Blob' in strata:
+                data['Blob'] = B[inx].astype(np.uint32)
+                if do_plots:
+                    plotFactorLandscape(sid, blobs, raster[:, :, i],
+                                        fact_name + ' in Blobs', fact_name,
+                                        imshape, scale, units, 4*binsiz, 
+                                        fact + '_blobs', out_pth)    
                     
-        if 'Blob' in strata:
-            data['Blob'] = B[inx].astype(np.int16)
-            if do_plots:
-                plotFactorLandscape(sid, blobs, raster[:, :, ia, ib],
-                                    fact_name + ' in Blobs', fact_name,
-                                    imshape, scale, units, 5*binsiz, 
-                                    fact + '_blobs', out_pth)
-           
-        # do SSH analysis on coloc factors
-        [aux, auy, auz] = SSH(sid, data, classes, 
-                              fact, fact_name, 
-                              strata, strata, out_pth, do_plots)
+            if 'LME' in strata:
+                data['LME'] = L[inx].astype(np.uint8)
+                data = data.loc[data['LME'] > 0]
+                if do_plots:
+                    plotFactorLandscape(sid, lmes, raster[:, :, i],
+                                        fact_name + ' in LMEs', fact_name,
+                                        imshape, scale, units, 4*binsiz, 
+                                        fact + '_lmes', out_pth)
+                      
+                
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                # do SSH analysis on factors
+                [aux, auy, auz] = SSH(sid, data, classes, 
+                                      fact, fact_name, 
+                                      strata, strata, out_pth, do_plots)
+            
         return([aux, auy, auz])
         
     
@@ -538,25 +744,25 @@ def sshComps(sid, raster,
         # serial processing
         for i, comp in enumerate(comps):
                        
-            [aux, auy, auz] = func(comp)
+            [aux, auy, auz] = func(i)
             sshtab = pd.concat([sshtab, aux], ignore_index=True)
             sshint = pd.concat([sshint, auy], ignore_index=True)
             ssheco = pd.concat([ssheco, auz], ignore_index=True)
             
     sshtab.to_csv(os.path.join(out_pth, 
                                sid + '_ssh_factor_' + field_name + '.csv'), 
-                  index=False)
+                  index=False, na_rep='NA')
     if (len(strata) > 1):
         sshint.to_csv(os.path.join(out_pth,
                                    sid + '_ssh_interaction_' + \
                                        field_name + '.csv'), 
-                      index=False)
+                      index=False, na_rep='NA')
         ssheco.to_csv(os.path.join(out_pth,
                                    sid + '_ssh_ecological_' + \
                                        field_name + '.csv'), 
-                      index=False)
+                      index=False, na_rep='NA')
 
-    return(0)  
+    return(sshtab)  
 
 
 # %%%% Plotting functions
@@ -653,16 +859,18 @@ def plotFactorLandscape(sid, patcharr, factarr, ttl, ftitle,
 def main(args):
 
     # %% debug starts
-    debug = False
+    debug = True
+    
+    start = time.time()
     
     if debug:
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS_252_set.csv')
-        REDO = False
-        GRPH = False
-        CASE = 0
+        argsfile = os.path.join(main_pth, 'DCIS.csv')
+        REDO = True
+        GRPH = True
+        CASE = 119
     else:
         # running from the CLI using the bash script
         # path to working directory (above /scripts)
@@ -673,20 +881,21 @@ def main(args):
         CASE = args.casenum
 
     print("==> The working directory is: " + main_pth)
+    print("==> Is CUDA available: " + str(ISCUDA))
     
     if not os.path.exists(argsfile):
         print("ERROR: The specified argument file does not exist!")
         sys.exit()
         
-    # only the first study in the argument table will be used
+    # NOTE: only ONE line in the argument table will be used
     study = Study( pd.read_csv(argsfile).iloc[0], main_pth)
        
-    factors = ['coloc', 'nndist', 'rhfunc', 'geordZ', 'abundance']
+    factors = ['coloc', 'nndist', 'rhfunc', 'geordG', 'abundance']
     strata = ['LME', 'Blob']
      
-    # %% STEP 1: creates data directories and new sample table
+    # %% STEP 0: creates data directories and new sample table
     # creates sample object and data folders for pre-processed data
-    sample = study.samples.iloc[CASE]
+    sample = study.getSample(CASE)
     
     # SID for display
     sid = sample.sample_ID
@@ -694,113 +903,59 @@ def main(args):
     msg = "====> Case [" + str(CASE + 1) + \
           "/" + str(len(study.samples.index)) + \
           "] :: SID <- " + sid 
-                  
-    sshpkl = os.path.join(study.dat_pth,
-                          sample['results_dir'],
-                          sid +'_ssh.pkl')    
-        
-    if REDO or (not os.path.exists(sshpkl)):
-        
-        from myfunctions import mkdirs
     
-        landpkl = os.path.join(study.dat_pth,
-                               sample['results_dir'],
-                               sid +'_landscape.pkl')
-        
-        # %% STEP 1: loads pickled landscape data
-        if (os.path.exists(landpkl)):
-            with open(landpkl, 'rb') as f:  
-                [land] = pickle.load(f) 
-        else:
-            print("==> ERROR! pickle image does not exist: " + landpkl +
-                  "; Make sure you ran TLA for this sample...")
-            sys.exit()
-            
-        print( msg + " >>> processing SSH..." )
+    if (sample.num_cells > 0):
 
-        out_pth = mkdirs(os.path.join(land.res_pth, 'SSH_Analysis'))
+          # output sample data filenames
+          samplcsv = os.path.join(sample['res_pth'], sid +'_ssh_tbl.csv')
+          
+          # if processed landscape do not exist
+          if (REDO or (not os.path.exists(samplcsv))):
+              
+              sshtab = pd.DataFrame() 
+              
+              # %% STEP 1: loading data
                 
-        [lmes, blobs] = strataFormating(land.lmearr, land.msk, 
-                                        land.classes, strata)
-        
-        # get analyses df
-        df = study.analyses.copy()
-        iscoloc = ~df.loc[df['name'] == 'coloc']['drop'].values[0]
-        isnndist = ~df.loc[df['name'] == 'nndist']['drop'].values[0]
-        isrhfunc = ~df.loc[df['name'] == 'rhfunc']['drop'].values[0]
-        isgordG = ~df.loc[df['name'] == 'gordG']['drop'].values[0]
-        
-        # %% STEP 2: SSH analysis: coloc
-        if ('coloc' in factors) and iscoloc:
-            #comps = [list(c) for c in 
-            #         list(combinations(land.classes.index, 2))]
-            aux =  df.loc[df['name'] == 'coloc']['comps'].values[0]
-            comps = compIDX(aux, land.classes)
-            
-            _ = sshComps(land.sid, land.colocarr, land.imshape, 
-                         land.scale, land.units, land.subbinsiz,
-                         'coloc', comps, land.classes, 
-                         lmes, blobs, strata, out_pth, GRPH, subset = True)
-       
-        # %% STEP 3: SSH analysis for nndist fields
-        if ('nndist' in factors) and isnndist:
-           # comps = [list(c) for c in 
-           #          list(permutations(land.classes.index, r=2))]
-           aux = df.loc[df['name'] == 'nndist']['comps'].values[0]
-           comps = compIDX(aux, land.classes)
-           
-           _ = sshComps(land.sid, land.nndistarr, land.imshape, 
-                         land.scale, land.units, land.subbinsiz,
-                         'nndist', comps, land.classes, 
-                         lmes, blobs, strata, out_pth, GRPH, subset = True)
-       
-        # %% STEP 4: SSH analysis for rhfunc fields
-        if ('rhfunc' in factors) and isrhfunc:
-            #comps = [list(c) for c in 
-            #         list(product(land.classes.index, repeat=2))]
-            aux = df.loc[df['name'] == 'rhfunc']['comps'].values[0]
-            comps = compIDX(aux, land.classes)
-            
-            _ = sshComps(land.sid, land.rhfuncarr, land.imshape, 
-                         land.scale, land.units, land.subbinsiz,
-                         'rhfunc', comps, land.classes, 
-                         lmes, blobs, strata, out_pth, GRPH, subset = True)
-                     
-        # %% STEP 5: SSH analysis for geordG fields
-        if ('geordZ' in factors) and isgordG:
-            #comps = list(land.classes.index)
-            aux = df.loc[df['name'] == 'gordG']['comps'].values[0]
-            comps = compIDX(aux, land.classes)
-            
-            _ = sshSubs(land.sid, land.geordGarr, land.imshape, 
-                        land.scale, land.units, land.subbinsiz,
-                        'geordZ', comps, land.classes, 
-                        lmes, blobs, strata, out_pth, GRPH, subset = True)
-            _ = sshSubs(land.sid, land.hotarr, land.imshape, 
-                        land.scale, land.units, land.subbinsiz,
-                        'HOT', comps, land.classes, 
-                        lmes, blobs, strata, out_pth, GRPH, subset = True)
+              print( msg + " >>> processing SSH..." )
+              
+              land = Landscape(sample, study, strata)
+              
+              # %% STEP 2: SSH analysis: coloc
+              if ('coloc' in factors) and ('coloc' in study.donefacts):
+                  aux = land.colocSSH(study.analyses, strata, GRPH)
+                  sshtab = pd.concat([sshtab, aux], ignore_index=True)
+              
+              # %% STEP 3: SSH analysis for nndist fields
+              if ('nndist' in factors) and ('nndist' in study.donefacts):
+                  aux =land.nndistSSH(study.analyses, strata, GRPH)
+                  sshtab = pd.concat([sshtab, aux], ignore_index=True)
 
-        # %% STEP 6: SSH analysis for abundance fields
-        if 'abundance' in factors:
-            comps = list(land.classes.index)
-            
-            _ = sshSubs(land.sid, land.abuarr, land.imshape, 
-                        land.scale, land.units, land.subbinsiz,
-                        'abundance', comps, land.classes, 
-                        lmes, blobs, strata, out_pth, GRPH, subset = True)
-            
-        # pickle results of quadrats analysis (for faster re-runs)
-        with open(sshpkl, 'wb') as f:  
-            pickle.dump([sid, lmes, blobs], f)  
-        del land
-        
-    # else:
-        # STEP 7: loads pickled landscape data
-        # with open(sshpkl, 'rb') as f:  
-        #    [sid, lmes, blobs] = pickle.load(f) 
+              # %% STEP 4: SSH analysis for rhfunc fields
+              if ('rhfunc' in factors) and ('rhfunc' in study.donefacts):
+                  aux =land.rhfuncSSH(study.analyses, strata, GRPH)
+                  sshtab = pd.concat([sshtab, aux], ignore_index=True)
+                     
+              # %% STEP 5: SSH analysis for geordG fields
+              if ('geordG' in factors) and ('geordG' in study.donefacts):
+                  aux =land.geordGSSH(study.analyses, strata, GRPH)
+                  sshtab = pd.concat([sshtab, aux], ignore_index=True)
+                
+              # %% STEP 6: SSH analysis for abundance fields
+              if 'abundance' in factors:
+                  aux =land.abundSSH(strata, GRPH)
+                  sshtab = pd.concat([sshtab, aux], ignore_index=True)
+                  
+              # %% STEP 7: saves results (for faster re-runs)
+              sshtab.to_csv(samplcsv, index=False)
+              
+              del land
 
     # %% end
+    t = time.strftime('%H:%M:%S', time.gmtime(time.time()-start))
+    print('Analysis finished. Time elapsed: ', t, '[HH:MM:SS]')
+    
+    with open(study.done_list, 'a') as f:
+        f.write(sid + '\n')
 
     return(0)        
 

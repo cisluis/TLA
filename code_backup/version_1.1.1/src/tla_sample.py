@@ -2,45 +2,37 @@
     Tumor Landscape Analysis (TLA):
     ##############################
 
-        This script reads parameters from a study set table (only the 1st line)
-        Then reads pre-processed data for one sample (given by a specified 
-        case number). Ell metrics for the TLA are calculated and recorded.
-        
-        Aggregated statistics across samples is calculated  using 
-        'TLA_sum' after processing all samples in the study. 
-              
+        This script reads lines from a study set table
+        Each line has parameters of a particular study
+
+        This formating helps faster and more consistent running of the TLA
 
 
 '''
 
 # %% Imports
 import os
-import sys
 import gc
+import sys
 import math
-import time
+# import pickle
+
 import pandas as pd
 import numpy as np
-import torch
-import pylandstats as pls
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import pylandstats as pls
+
+# from skimage import io
 from PIL import Image
 from ast import literal_eval
 from argparse import ArgumentParser
 
 from myfunctions import mkdirs
 
-if torch.cuda.is_available(): 
-    ISCUDA = True
-else:
-    ISCUDA = False
-    
 Image.MAX_IMAGE_PIXELS = 600000000
 
-# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:10240"
-
-
-__version__  = "2.0.0"
+__version__  = "1.1.1"
 
 
 # %% Private classes
@@ -64,47 +56,47 @@ class Study:
           sys.exit()
       self.classes = getLMEclasses(f)
       
-      # list of samples is read from 'tla_sub_samples.csv' if it exist, 
-      # otherwise reads directly from the original list for the study 
-      f = os.path.join(self.dat_pth, 'tla_sub_samples.csv')
+      f = os.path.join(main_pth, study['raw_path'], study['raw_samples_table'])
       if not os.path.exists(f):
-          f = os.path.join(self.dat_pth, study['name'] + '_samples.csv')
-          if not os.path.exists(f):
-              print("ERROR: samples file " + f + " does not exist!")
-              sys.exit()
-      self.samples = pd.read_csv(f)    
+          print("ERROR: raw samples file " + f + " does not exist!")
+          sys.exit()
+      raw_samples = pd.read_csv(f)[["sample_ID"]]
       
-      # list of processed samples
-      self.done_list = os.path.join(self.dat_path, 'tla_done_samples.csv')
-               
+      f = os.path.join(self.dat_pth, study['name'] + '_samples.csv')
+      if not os.path.exists(f):
+          print("ERROR: samples file " + f + " does not exist!")
+          sys.exit()
+      all_samples = pd.read_csv(f)    
+          
+      aux = raw_samples.merge(all_samples, how='left', on='sample_ID')
+      aux.fillna('', inplace=True)
+      self.samples = aux
+      
       # scale parameters
-      self.factor = np.float32(1.0)
+      self.factor = 1.0
       if 'factor' in study:
           self.factor = study['factor']
-      self.scale = np.float32(study['scale']/self.factor)
+      self.scale = study['scale']/self.factor
       self.units = study['units']
-      
+
       # the size of quadrats and subquadrats
-      aux = 4*np.ceil((study['binsiz']/self.scale)/4)
-      self.binsiz = np.rint(aux).astype('int32')
-      self.subbinsiz = np.rint(self.binsiz/4).astype('int32')
-      
+      self.binsiz = int(4*np.ceil((study['binsiz']/self.scale)/4))
+      self.subbinsiz = int(self.binsiz/4)
+
       # bandwidth size for convolutions is half the quadrat size
-      self.kernel = np.rint(self.binsiz/2).astype('int32')
-      self.subkernel = np.rint(self.subbinsiz/2).astype('int32')
+      self.kernel = int(self.binsiz/2)
+      self.subkernel = int(self.subbinsiz/2)
       
       # creates samples table for output
       self.samples_out = pd.DataFrame()
       
       # analyses table
       self.analyses = pd.read_csv(os.path.join(self.dat_pth,
-                                     self.name + '_analyses.csv'),
-                        converters={'comps': literal_eval}) 
-      # drop Attraction Enrichment Functions score from analysis
-      # (NEED TO FIX A BUG IN THE CALCULATION)
-      self.analyses.loc[self.analyses['name']== 'aefunc', 'drop'] = True
+                                               self.name + '_analyses.csv'),
+                                  converters={'comps': literal_eval}) 
       
-  def getSample(self, i):
+      
+  def getStudy(self, i):
       
       # get sample entry from samples df
       sample = self.samples.iloc[i].copy()
@@ -127,8 +119,6 @@ class Landscape:
     
   def __init__(self, sample, study):
       
-      # from skimage import io
-      
       dat_pth = study.dat_pth
       
       self.sid = sample.sample_ID
@@ -141,11 +131,10 @@ class Landscape:
       aux = pd.read_csv(f)
       aux['class'] = aux['class'].astype(str)
       self.classes = pd.merge(aux, 
-                              study.classes[['class', 
-                                             'abundance_edges', 
-                                             'mixing_edges']], 
+                              study.classes, 
                               how="left",
-                              on=['class'])
+                              on=['class', 'class_name',
+                                  'class_val', 'class_color']).fillna(0)
       
       self.coord_file = os.path.join(dat_pth, sample['coord_file'])
        
@@ -158,20 +147,18 @@ class Landscape:
       self.units = study.units
       
       # raster images
-      pth = os.path.join(study.dat_pth, 'rasters', self.sid)
-      
-      # ROI
-      f = os.path.join(pth, self.sid + '_roi.npz')
+      f = os.path.join(dat_pth, sample['roi_file'])
       if not os.path.exists(f):
           print("ERROR: raster file " + f + " does not exist!")
           sys.exit()
       aux = np.load(f)
-      self.roiarr = aux['roi'].astype('bool') # ROI raster
-      self.imshape = np.int32(self.roiarr.shape)
+      self.roiarr = aux['roi'] # ROI raster
+      self.imshape = self.roiarr.shape
+      self.kde_file = os.path.join(dat_pth, sample['kde_file'])
+      self.abumix_file = os.path.join(dat_pth, sample['abumix_file'])
       
       # more raster attributes
-      self.kde_file = os.path.join(pth, self.sid + '_kde.npz')
-      self.abumix_file = os.path.join(pth, self.sid + '_abumix.npz')
+      pth = mkdirs(os.path.join(study.dat_pth, 'rasters', self.sid))
       self.coloc_file = os.path.join(pth, self.sid + '_coloc.npz')  
       self.nndist_file = os.path.join(pth, self.sid + '_nndist.npz') 
       self.aefunc_file = os.path.join(pth, self.sid + '_aefunc.npz')  
@@ -184,14 +171,14 @@ class Landscape:
       # img = None
       # f = os.path.join(dat_pth, sample['image_file'])
       # if (sample['image_file'] != '' and os.path.exists(f)):
-      #     img = np.uint8(io.imread(f))
+      #     img = io.imread(f)
       # self.img = img
 
       # # loads blob mask
       # msk = None
       # f = os.path.join(dat_pth, sample['mask_file'])
       # if (sample['mask_file'] != '' and os.path.exists(f)):
-      #     msk = np.load(f)['roi']
+      #     msk = np.load()['roi']
       # self.msk = msk
           
       # pylandstats landscape object
@@ -262,7 +249,7 @@ class Landscape:
 
       """
       
-      from myfunctions import fftconv2d
+      from scipy.signal import convolve
       from myfunctions import getis_ord_g_array, morisita_horn_array
       from myfunctions import nndist_array, circle, attraction_T_array_biv
       from myfunctions import ripleys_K_array, ripleys_K_array_biv
@@ -272,8 +259,6 @@ class Landscape:
           print("ERROR: data file " + f + " does not exist!")
           sys.exit()
       data = pd.read_csv(f)
-      data['class'] = data['class'].astype(str)
-      data['orig_class'] = data['orig_class'].astype(str)
       
       # analyses
       df = analyses.copy()
@@ -314,54 +299,42 @@ class Landscape:
               # combinations of cases:
               coloc_comps = df.loc[df['name'] == 'coloc']['comps'].values[0]
               # Colocalization index (spacial Morisita-Horn score)
-              colocarr = np.full((self.imshape[0], 
-                                  self.imshape[1], 
-                                   len(coloc_comps)), 
-                                 np.nan, dtype=np.float64)
+              colocarr = np.full((self.imshape[0], self.imshape[1], 
+                                   len(coloc_comps)), np.nan)
               cases_x  = list(set(cases_x) | set([c[0] for c in coloc_comps]))
               cases_y  = list(set(cases_y) | set([c[1] for c in coloc_comps]))
           if isnndist:
               # combinations of cases:
               nndist_comps = df.loc[df['name'] == 'nndist']['comps'].values[0]
               # Nearest Neighbor Distance index
-              nndistarr = np.full((self.imshape[0], 
-                                   self.imshape[1], 
-                                    len(nndist_comps)), 
-                                  np.nan, dtype=np.float64)
+              nndistarr = np.full((self.imshape[0], self.imshape[1], 
+                                    len(nndist_comps)), np.nan)
               cases_x  = list(set(cases_x) | set([c[0] for c in nndist_comps]))
               cases_y  = list(set(cases_y) | set([c[1] for c in nndist_comps]))
           if isaefunc:
               # combinations of cases:
               aefunc_comps = df.loc[df['name'] == 'aefunc']['comps'].values[0]
               # Attraction Enrichment score
-              aefuncarr = np.full((self.imshape[0], 
-                                   self.imshape[1], 
-                                    len(aefunc_comps)), 
-                                  np.nan, dtype=np.float32)
+              aefuncarr = np.full((self.imshape[0], self.imshape[1], 
+                                    len(aefunc_comps)), np.nan)
               cases_x  = list(set(cases_x) | set([c[0] for c in aefunc_comps]))
               cases_y  = list(set(cases_y) | set([c[1] for c in aefunc_comps]))
           if isrhfunc:
               # combinations of cases:
               rhfunc_comps = df.loc[df['name'] == 'rhfunc']['comps'].values[0]
               # Ripley's H score
-              rhfuncarr = np.full((self.imshape[0], 
-                                   self.imshape[1], 
-                                    len(rhfunc_comps)), 
-                                  np.nan, dtype=np.float64)
+              rhfuncarr = np.full((self.imshape[0], self.imshape[1], 
+                                    len(rhfunc_comps)), np.nan)
               cases_x  = list(set(cases_x) | set([c[0] for c in rhfunc_comps]))
               cases_y  = list(set(cases_y) | set([c[1] for c in rhfunc_comps]))
           if isgeordG:
               # combinations of cases:
               geordG_comps = df.loc[df['name'] == 'geordG']['comps'].values[0]
               # Gets-Ord statistics (G* and HOT value)
-              geordGarr = np.full((self.imshape[0], 
-                                   self.imshape[1], 
-                                    len(geordG_comps)), 
-                                  np.nan, dtype=np.float64)
-              hotarr = np.full((self.imshape[0], 
-                                self.imshape[1], 
-                                 len(geordG_comps)), 
-                               np.nan, dtype=np.float32)
+              geordGarr = np.full((self.imshape[0], self.imshape[1], 
+                                    len(geordG_comps)), np.nan)
+              hotarr = np.full((self.imshape[0], self.imshape[1], 
+                                 len(geordG_comps)), np.nan)
               cases_x  = list(set(cases_x) | set(geordG_comps))
           
           # list classes with non-zero abundance in this sample  
@@ -379,30 +352,24 @@ class Landscape:
           cases_yj  = [cases.index(c) for c in cases_y]
           
           # cell locations and abundance in kernels and subkernels
-          X = np.zeros((self.imshape[0], 
-                        self.imshape[1], 
-                        len(cases)), dtype=np.uint8)
-          N = np.zeros((self.imshape[0], 
-                        self.imshape[1], 
-                        len(cases)), dtype=np.int32)
-          n = np.zeros((self.imshape[0], 
-                        self.imshape[1], 
-                        len(cases)), dtype=np.int32)
+          X = np.zeros((self.imshape[0], self.imshape[1], len(cases)))
+          N = np.zeros((self.imshape[0], self.imshape[1], len(cases)))
+          n = np.zeros((self.imshape[0], self.imshape[1], len(cases)))
           
           # produces a box-circle kernel
           circ = circle(self.kernel)
           subcirc = circle(self.subkernel)
           
           # precalculate convolutions for all required classes
-          for i, case_i in enumerate(cases):
+          for i, case in enumerate(cases):
               # coordinates of cells in class case
-              aux = data.loc[data['class'] == case_i]
+              aux = data.loc[data['class'] == case]
               X[aux.row, aux.col, i] = 1
               
-              aux = fftconv2d(X[:, :, i], circ, cuda=ISCUDA)
-              N[:, :, i] = np.float64(np.abs(np.rint(aux)))
-              aux = fftconv2d(X[:, :, i], subcirc, cuda=ISCUDA)
-              n[:, :, i] = np.float64(np.abs(np.rint(aux)))
+              N[:, :, i] = np.abs(np.rint(convolve(X[:, :, i],
+                                                      circ, mode='same')))
+              n[:, :, i] = np.abs(np.rint(convolve(X[:, :, i],
+                                                      subcirc, mode='same')))
           
           # loop thru all combinations of classes (pair-wise comparisons)
           for i, case_x in enumerate(cases_x):
@@ -411,13 +378,11 @@ class Landscape:
               xi = cases_xi[i]
               # coordinates of cells in class x (ref)
               aux = data.loc[data['class'] == case_x]
-              rcx = np.array(aux[['row', 'col']]).astype('int32')
+              rcx = np.array(aux[['row', 'col']])
               
               # Getis-Ord stats on smooth abundance profile for this class
               if (case_x in geordG_comps):
-                  G = getis_ord_g_array(N[:, :, xi], 
-                                        self.roiarr, 
-                                        cuda=ISCUDA)
+                  G = getis_ord_g_array(N[:, :, xi], self.roiarr)
                   [geordGarr[:, :, geordG_comps.index(case_x)], 
                    hotarr[:, :, geordG_comps.index(case_x)]] = G
               
@@ -427,7 +392,7 @@ class Landscape:
                   yj = cases_yj[j]
                   # coordinates of cells in class y (target)
                   aux = data.loc[data['class'] == case_y]
-                  rcy = np.array(aux[['row', 'col']]).astype('int32')
+                  rcy = np.array(aux[['row', 'col']])
                   
                   # comparison tuple
                   comp = (case_x, case_y) 
@@ -437,8 +402,7 @@ class Landscape:
                           # Morisita Index (colocalization score)
                           M = morisita_horn_array(n[:, :, xi], 
                                                   n[:, :, yj], 
-                                                  circ, 
-                                                  cuda=ISCUDA)
+                                                  circ)
                       else:
                           # Morisita Index (identity)
                           M = 1.0*(n[:, :, xi] > 0)
@@ -448,9 +412,7 @@ class Landscape:
                   if (comp in nndist_comps):
                       if (comp[0] != comp[1]):
                           # Nearest Neighbor Distance index (bivariate)
-                          D = nndist_array(rcx, rcy, 
-                                           N[:, :, xi], circ, 
-                                           cuda=ISCUDA)
+                          D = nndist_array(rcx, rcy, N[:, :, xi], circ)
                       else:
                           # Nearest Neighbor Distance index (identity)
                           D = 1.0*(N[:, :, xi] > 0)
@@ -463,8 +425,7 @@ class Landscape:
                       T = attraction_T_array_biv(rcx, 
                                                  N[:, :, j], 
                                                  dy, 
-                                                 circ, 
-                                                 cuda=ISCUDA)
+                                                 circ)
                       
                       T[self.roiarr == 0] = np.nan    
                       aefuncarr[:, :, aefunc_comps.index(comp)] = T     
@@ -475,14 +436,12 @@ class Landscape:
                           K = ripleys_K_array_biv(rcx, 
                                                   n[:, :, xi], N[:, :, xi],
                                                   n[:, :, yj], N[:, :, yj], 
-                                                  circ, 
-                                                  cuda=ISCUDA) 
+                                                  circ) 
                       else:
                           # Ripleys H score (identity)
                           K = ripleys_K_array(rcx, 
                                               n[:, :, xi], N[:, :, xi], 
-                                              circ, 
-                                              cuda=ISCUDA)
+                                              circ)
                       
                       K[self.roiarr == 0] = np.nan    
                       K[K == 0] = np.nan    
@@ -494,20 +453,17 @@ class Landscape:
     
           if iscoloc:
               # saves coloc cases:
-              np.savez_compressed(self.coloc_file, 
-                                  coloc=colocarr)
+              np.savez_compressed(self.coloc_file, coloc=colocarr)
               del colocarr
               
           if isnndist:
               # saves nndist cases:
-              np.savez_compressed(self.nndist_file, 
-                                  nndist=nndistarr)
+              np.savez_compressed(self.nndist_file, nndist=nndistarr)
               del nndistarr
               
           if isrhfunc:
               # saves rhfunc cases:
-              np.savez_compressed(self.rhfunc_file, 
-                                  rhfunc=rhfuncarr)
+              np.savez_compressed(self.rhfunc_file, rhfunc=rhfuncarr)
               del rhfuncarr
               
           if isgeordG:
@@ -544,15 +500,15 @@ class Landscape:
           medges = self.classes['mixing_edges']
     
           dim = len(self.classes)
-          lmearr = np.zeros(self.imshape, dtype=np.uint8 )
+          lmearr = np.zeros(self.imshape)
           
           f = self.abumix_file
           if not os.path.exists(f):
               print("ERROR: raster file " + f + " does not exist!")
               sys.exit()
           aux = np.load(f)
-          abuarr = np.float64(aux['abu']) # local abundances of each class
-          mixarr = np.float64(aux['mix']) # local mixing values of each class
+          abuarr = aux['abu'] # local abundances of each class
+          mixarr = aux['mix'] # local mixing values of each class
     
           # vectorized function for faster processing
           def indexvalue(x, edges):
@@ -576,10 +532,10 @@ class Landscape:
                   lmearr = lmearr + (10**(2*j + 1))*abu + (10**(2*j))*mix
     
           # sets out-regions to NAN
-          lmearr[self.roiarr == 0] = 0
+          lmearr[self.roiarr == 0] = np.nan
     
           # reduces the number of lme classes by grouping them
-          self.lmearr = np.uint8(lmeRename(lmearr, dim))
+          self.lmearr = lmeRename(lmearr, dim)
           
           # saves geordG cases:
           np.savez_compressed(self.lme_file, lme=self.lmearr)
@@ -590,7 +546,7 @@ class Landscape:
       
       else:
           aux = np.load(self.lme_file)
-          self.lmearr = np.uint8(aux['lme'])
+          self.lmearr = aux['lme']
           
       
   def plotLMELandscape(self, out_pth):
@@ -632,6 +588,8 @@ class Landscape:
           im = plotRGB(ax, raster, self.units,
                        cedges, redges, xedges, yedges, fontsiz=18,
                        vmin=0.5, vmax=(nlevs + 0.5), cmap=cmap)
+          ax.set_xlim([0, raster.shape[0]])
+          ax.set_ylim([0, raster.shape[1]])
           cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
           cbar.set_ticks(icticks)
           cbar.set_ticklabels(cticks)
@@ -698,24 +656,12 @@ class Landscape:
               # combinations of cases:
               coloc_comps = df.loc[df['name'] == 'coloc']['comps'].values[0]
               
-              compsterm = coloc_comps.copy()
-              compslabs = coloc_comps.copy()
-              for i, comp in enumerate(coloc_comps):
-                  cl1 = self.classes.loc[self.classes['class'] == 
-                                    comp[0]].class_name.item()
-                  cl2 = self.classes.loc[self.classes['class'] == 
-                                    comp[1]].class_name.item()
-                  compsterm[i] = comp[0] + '::' + comp[1]
-                  compslabs[i] = '(' + cl1  + '::' + cl2 + ')'
-                  
-                
               # plots array of landscapes for these comparisons
-              [fig, metrics] = plotCompLandscape(self.sid,
+              [fig, metrics] = plotCompLandscape(self.classes,
+                                                 self.sid,
                                                  colocarr, 
                                                  self.roiarr,
                                                  coloc_comps, 
-                                                 compsterm,
-                                                 compslabs,
                                                  self.imshape,
                                                  'Coloc index', 
                                                  lims,
@@ -822,23 +768,12 @@ class Landscape:
               # combinations of cases:
               nndist_comps = df.loc[df['name'] == 'nndist']['comps'].values[0]
               
-              compsterm = nndist_comps.copy()
-              compslabs = nndist_comps.copy()
-              for i, comp in enumerate(nndist_comps):
-                  cl1 = self.classes.loc[self.classes['class'] == 
-                                    comp[0]].class_name.item()
-                  cl2 = self.classes.loc[self.classes['class'] == 
-                                    comp[1]].class_name.item()
-                  compsterm[i] = comp[0] + '::' + comp[1]
-                  compslabs[i] = '(' + cl1  + '::' + cl2 + ')'
-              
               # plots array of landscapes for these comparisons
-              [fig, metrics] = plotCompLandscape(self.sid, 
+              [fig, metrics] = plotCompLandscape(self.classes,
+                                                 self.sid, 
                                                  nndistarr, 
                                                  self.roiarr,
                                                  nndist_comps, 
-                                                 compsterm,
-                                                 compslabs,
                                                  self.imshape,
                                                  'NNDist index',
                                                  lims,
@@ -947,24 +882,13 @@ class Landscape:
               
               # combinations of cases:
               rhfunc_comps = df.loc[df['name'] == 'rhfunc']['comps'].values[0]
-              
-              compsterm = rhfunc_comps.copy()
-              compslabs = rhfunc_comps.copy()
-              for i, comp in enumerate(rhfunc_comps):
-                  cl1 = self.classes.loc[self.classes['class'] == 
-                                    comp[0]].class_name.item()
-                  cl2 = self.classes.loc[self.classes['class'] == 
-                                    comp[1]].class_name.item()
-                  compsterm[i] = comp[0] + '::' + comp[1]
-                  compslabs[i] = '(' + cl1  + '::' + cl2 + ')'
     
               # plots array of landscapes for these comparisons
-              [fig, metrics] = plotCompLandscape(self.sid,
+              [fig, metrics] = plotCompLandscape(self.classes,
+                                                 self.sid,
                                                  rhfuncarr,
                                                  self.roiarr,
-                                                 rhfunc_comps,
-                                                 compsterm, 
-                                                 compslabs,
+                                                 rhfunc_comps, 
                                                  self.imshape,
                                                  'Ripley`s H function score', 
                                                  lims,
@@ -1071,21 +995,13 @@ class Landscape:
               
               # combinations of cases:
               geordG_comps = df.loc[df['name'] == 'geordG']['comps'].values[0]
-              
-              compsterm = geordG_comps.copy()
-              compslabs = geordG_comps.copy()
-              for i, comp in enumerate(geordG_comps):
-                  compsterm[i] = comp[i]
-                  compslabs[i] = self.classes.loc[self.classes['class'] == 
-                                   comp].class_name.item()
           
               # plots array of landscapes for these comparisons
-              [fig, metrics] = plotCompLandscape(self.sid,
+              [fig, metrics] = plotCaseLandscape(self.classes,
+                                                 self.sid,
                                                  geordGarr,
                                                  self.roiarr,
                                                  geordG_comps,
-                                                 compsterm,
-                                                 compslabs,
                                                  self.imshape,
                                                  'Getis-Ord Z score', 
                                                  lims,
@@ -1106,11 +1022,11 @@ class Landscape:
                   plt.close()
                   
                   # plots array of landscapes for these comparisons
-                  fig = plotDiscreteLandscape(self.sid, 
+                  fig = plotDiscreteLandscape(self.classes,
+                                              self.sid, 
                                               hotarr, 
                                               self.roiarr,
                                               geordG_comps, 
-                                              compslabs,
                                               self.imshape,
                                               'HOT score', 
                                               [-1, 1],
@@ -1761,7 +1677,144 @@ def lmeAdjacencyHeatmap(sid, adj_pairs, res_pth ):
     return(0)
 
 
-def plotDiscreteLandscape(sid, raster, roi, comps, compslabs, shape,
+def plotCaseLandscape(classes, sid, raster, roi, comps, shape,
+                      metric, lims, scale, units, binsiz, do_plots):
+    """
+    Plot of landscape from comparison raster
+
+    Parameters
+    ----------
+    - sid: sample ID
+    - raster: (numpy) raster image
+    - comps: (list) class comparisons
+    - shape: (tuple) shape in pixels of TLA landscape
+    - metric: (str) title of metric ploted
+    - lims: (tuple) limits of the metric
+    - scale: (float) scale of physical units / pixel
+    - units: (str) name of physical units (eg '[um]')
+    - binsiz : (float) size of quadrats
+
+    """
+    
+    from myfunctions import plotRGB, plotEdges
+
+    dim = len(comps)
+    nlevs = 10
+    bini = (lims[1] - lims[0])/(2*nlevs)
+    vmax = np.nanquantile(raster, 0.975) + 2*bini
+    cticks = np.arange(lims[0], lims[1] + 2*bini, 2*bini)
+    bticks = np.arange(lims[0], lims[1] + bini, bini)
+    bbticks = bticks[bticks <= vmax] 
+
+    [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
+    
+    comp_metrics = pd.DataFrame()
+
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        
+        fig = []
+ 
+        # plots sample image
+        if do_plots:
+            fig, ax = plt.subplots(dim, 2,
+                                   figsize=(5*2, 0.5 + math.ceil(5*dim/ar)),
+                                   facecolor='w', edgecolor='k')
+
+        for i, comp in enumerate(comps):
+
+            aux = raster[:, :, i]
+            
+            # generates discrete values of the factor
+            auy = aux.copy()
+            auy[np.isnan(aux)] = 0
+            inx = np.digitize(auy, bticks[:-1])
+            auy = bticks[inx]
+            auy[np.isnan(aux)] = np.nan
+            cmap = plt.get_cmap('jet', len(bbticks))
+            
+            # create pylandscape object with binned factor values
+            pl = pls.Landscape(inx, res=(1, 1), neighborhood_rule='8')
+            
+            # get all landscape-level metrics for (discrete) factor
+            metrics = getLandscapeMetrics(pl)
+            metrics = metrics.to_frame().transpose().reset_index(drop=True)
+            metrics['class'] =  comp
+            comp_metrics = pd.concat([comp_metrics, metrics],
+                                     ignore_index=True)
+            
+            if do_plots:
+                
+                freq, _ = np.histogram(aux[~np.isnan(aux)], 
+                                       bins=bticks,
+                                       density=False)
+                vals = freq/np.sum(~np.isnan(aux))
+                
+                cl = classes.loc[classes['class'] == comp].class_name.item()
+                
+                if (dim > 1):  
+                    im = plotRGB(ax[i, 0], aux, units,
+                                 cedges, redges, xedges, yedges, fontsiz=12,
+                                 vmin=lims[0], vmax=lims[1], cmap=cmap)
+                    ax[i, 0].contour(np.flip(roi, 0), 
+                                     [0.5], linewidths=2, colors='black')
+                    ax[i, 0].set_xlim([0, aux.shape[0]])
+                    ax[i, 0].set_ylim([0, aux.shape[1]])
+                    
+                    cbar = plt.colorbar(im, ax=ax[i, 0], 
+                                        fraction=0.046, pad=0.04)
+                    cbar.set_ticks(cticks)
+                    cbar.set_label(metric, rotation=90, labelpad=2)
+                    
+                    ax[i, 1].bar(bticks[:-1], vals,
+                                 width=bini, align='edge',
+                                 alpha=0.75, color='b', edgecolor='k')
+        
+                    
+                    ax[i, 1].set_title(cl, fontsize=18, y=1.02)
+                    ax[i, 1].set_xlabel(metric)
+                    ax[i, 1].set_ylabel('Fraction of pixels')
+                    ax[i, 1].set_xlim(lims)
+                    ax[i, 1].set_xticks(cticks)
+                    # ax[i, 1].set_yscale('log')
+                    
+                else:
+                   im = plotRGB(ax[0], aux, units,
+                                cedges, redges, xedges, yedges, fontsiz=12,
+                                vmin=lims[0], vmax=lims[1], cmap=cmap)
+                   ax[0].contour(np.flip(roi, 0), 
+                                    [0.5], linewidths=2, colors='black')
+                   ax[0].set_xlim([0, aux.shape[0]])
+                   ax[0].set_ylim([0, aux.shape[1]])
+                   
+                   cbar = plt.colorbar(im, ax=ax[0], 
+                                       fraction=0.046, pad=0.04)
+                   cbar.set_ticks(cticks)
+                   cbar.set_label(metric, rotation=90, labelpad=2)
+                   
+                   ax[1].bar(bticks[:-1], vals,
+                                width=bini, align='edge',
+                                alpha=0.75, color='b', edgecolor='k')
+       
+                   ax[1].set_title(cl, fontsize=18, y=1.02)
+                   ax[1].set_xlabel(metric)
+                   ax[1].set_ylabel('Fraction of pixels')
+                   ax[1].set_xlim(lims)
+                   ax[1].set_xticks(cticks)
+                   # ax[1].set_yscale('log')
+
+        if do_plots:
+            fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+            plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        
+        # shift column 'class' to first position
+        comp_metrics.insert(0, 'class', comp_metrics.pop('class'))
+
+    return([fig, comp_metrics])
+
+
+def plotDiscreteLandscape(classes, sid, raster, roi, comps, shape,
                           metric, lims, scale, units, binsiz):
     """
     Plot of discrete landscape from comparison raster
@@ -1808,13 +1861,17 @@ def plotDiscreteLandscape(sid, raster, roi, comps, compslabs, shape,
             freq = countsin(aux[~np.isnan(aux)], cticks)
             vals = freq/np.sum(~np.isnan(aux))
             
+            cl = classes.loc[classes['class'] == comp].class_name.item()
+            
             if (dim > 1):  
                 im = plotRGB(ax[i, 0], aux, units,
                              cedges, redges, xedges, yedges, fontsiz=12,
                              vmin=lims[0], vmax=lims[1], cmap=cmap)
                 ax[i, 0].contour(np.flip(roi, 0), 
                                  [0.5], linewidths=2, colors='black')
-                                
+                ax[i, 0].set_xlim([0, aux.shape[0]])
+                ax[i, 0].set_ylim([0, aux.shape[1]])
+                
                 cbar = plt.colorbar(im, ax=ax[i, 0], fraction=0.046, pad=0.04)
                 cbar.set_ticks(cticks)
                 cbar.set_label(metric, rotation=90, labelpad=2)
@@ -1823,7 +1880,7 @@ def plotDiscreteLandscape(sid, raster, roi, comps, compslabs, shape,
                              align='center',
                              alpha=0.75, color='b', edgecolor='k')
     
-                ax[i, 1].set_title(compslabs[i], fontsize=18, y=1.02)
+                ax[i, 1].set_title(cl, fontsize=18, y=1.02)
                 ax[i, 1].set_xlabel(metric)
                 ax[i, 1].set_ylabel('Fraction of pixels')
                 #ax[i, 1].set_xlim(lims)
@@ -1836,7 +1893,9 @@ def plotDiscreteLandscape(sid, raster, roi, comps, compslabs, shape,
                              vmin=lims[0], vmax=lims[1], cmap=cmap)
                 ax[0].contour(np.flip(roi, 0),
                               [0.5], linewidths=2, colors='black')
-                                
+                ax[0].set_xlim([0, aux.shape[0]])
+                ax[0].set_ylim([0, aux.shape[1]])
+                
                 cbar = plt.colorbar(im, ax=ax[0], fraction=0.046, pad=0.04)
                 cbar.set_ticks(cticks)
                 cbar.set_label(metric, rotation=90, labelpad=2)
@@ -1844,21 +1903,21 @@ def plotDiscreteLandscape(sid, raster, roi, comps, compslabs, shape,
                 ax[1].bar(cticks, vals,
                              align='center',
                              alpha=0.75, color='b', edgecolor='k')
-                ax[1].set_title(compslabs[i], fontsize=18, y=1.02)
+                ax[1].set_title(cl, fontsize=18, y=1.02)
                 ax[1].set_xlabel(metric)
                 ax[1].set_ylabel('Fraction of pixels')
                 #ax[1].set_xlim(lims)
                 ax[1].set_xticks(cticks)
                 # ax[1].set_yscale('log')
         
-        fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
+        fig.suptitle('Sample ID: ' + str(sid), fontsize=12, y=.95)
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         
 
     return(fig)
 
 
-def plotCompLandscape(sid, raster, roi, comps, compsterm, compslabs, shape,
+def plotCompLandscape(classes, sid, raster, roi, comps, shape,
                       metric, lims, scale, units, binsiz, do_plots):
     """
     Plot of landscape from comparison raster
@@ -1883,13 +1942,16 @@ def plotCompLandscape(sid, raster, roi, comps, compsterm, compslabs, shape,
     
     nlevs = 20
     bini = (lims[1] - lims[0])/(nlevs)
-    bins = np.round(np.arange(lims[0], lims[1] + bini, bini), 3)
-    cticks = np.round(np.arange(lims[0], lims[1] + 2*bini, 2*bini), 3)
-    bticks = np.round(np.arange(lims[0], lims[1], bini), 3)
+    cticks = np.arange(lims[0], lims[1] + 2*bini, 2*bini)
+    bticks = np.arange(lims[0], lims[1] + bini, bini)
     
     [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
 
-    cmap = plt.get_cmap('jet', len(bins))
+    #vmax = np.nanquantile(raster, 0.99) + 2*bini
+    vmax = lims[1]
+    bbticks = bticks[bticks <= vmax] 
+    
+    cmap = plt.get_cmap('jet', len(bbticks))
 
     import warnings
     with warnings.catch_warnings():
@@ -1912,102 +1974,93 @@ def plotCompLandscape(sid, raster, roi, comps, compsterm, compslabs, shape,
             # generates discrete values of the factor
             auy = aux.copy()
             auy[np.isnan(aux)] = 0
-            
-            inx = np.digitize(auy, bticks)
-            inx[np.isnan(aux)] = 0
-            
-            auy = bticks[inx - 1]
+            inx = np.digitize(auy, bticks[:-1])
+            auy = bticks[inx]
             auy[np.isnan(aux)] = np.nan
             
             # create pylandscape object with binned factor values
             pl = pls.Landscape(inx, res=(1, 1), neighborhood_rule='8')
             
-            if (len(pl.classes) > 0):
-            
-                # get all landscape-level metrics for (discrete) factor
-                metrics = getLandscapeMetrics(pl)
-                metrics = metrics.to_frame().transpose().reset_index(drop=True)
-                metrics['comp'] =  compsterm[i]
-                metrics['number_of_levels'] = len(pl.classes)
-                comp_metrics = pd.concat([comp_metrics, metrics],
-                                         ignore_index=True)
-    
-                if do_plots:
+            # get all landscape-level metrics for (discrete) factor
+            metrics = getLandscapeMetrics(pl)
+            metrics = metrics.to_frame().transpose().reset_index(drop=True)
+            metrics['comp'] =  comp[0] + '::' + comp[1]
+            comp_metrics = pd.concat([comp_metrics, metrics],
+                                     ignore_index=True)
+
+            if do_plots:
+                
+                freq, _ = np.histogram(aux[~np.isnan(aux)], 
+                                       bins=bbticks,
+                                       density=False)
+                vals = freq/np.sum(~np.isnan(aux))
+                
+                cl1 = classes.loc[classes['class'] == comp[0]].class_name.item()
+                cl2 = classes.loc[classes['class'] == comp[1]].class_name.item()
+                
+                if (dim > 1):  
+                    im = plotRGB(ax[i, 0], auy, units,
+                                 cedges, redges, xedges, yedges, fontsiz=12,
+                                 vmin=lims[0], vmax=vmax, cmap=cmap)
+                    ax[i, 0].contour(np.flip(roi, 0), 
+                                     [0.5], linewidths=2, colors='black')
+                    ax[i, 0].set_xlim([0, auy.shape[0]])
+                    ax[i, 0].set_ylim([0, auy.shape[1]])
+        
+                    cbar = plt.colorbar(im, ax=ax[i, 0], 
+                                        fraction=0.046, pad=0.04)
+                    cbar.set_ticks(cticks[cticks <= vmax])
+                    cbar.set_label(metric, rotation=90, labelpad=2)
                     
-                    freq, _ = np.histogram(aux[~np.isnan(aux)], 
-                                           bins=bins,
-                                           density=False)
-                    vals = freq/np.sum(~np.isnan(aux))
+                    ax[i, 1].bar(bbticks[:-1], vals,
+                                 width=bini, align='edge',
+                                 alpha=0.75, 
+                                 color=cmap(range(len(bbticks[:-1]))),
+                                 edgecolor='k')
+        
+                    ax[i, 1].set_title('(' + cl1  + '::' + cl2 + ')', 
+                                       fontsize=18, y=1.02)
+                    ax[i, 1].set_xlabel(metric)
+                    ax[i, 1].set_ylabel('Fraction of pixels')
+                    ax[i, 1].set_xlim([lims[0], vmax])
+                    ax[i, 1].set_xticks(cticks[cticks <= vmax])
+                    # ax[i, 1].set_yscale('log')
                     
-                    
-                    if (dim > 1):  
-                        im = plotRGB(ax[i, 0], auy, units,
-                                     cedges, redges, xedges, yedges, 
-                                     fontsiz=12,
-                                     vmin=lims[0], vmax=lims[1], cmap=cmap)
-                        ax[i, 0].contour(np.flip(roi, 0), 
-                                         [0.5], linewidths=2, colors='black')
-            
-                        cbar = plt.colorbar(im, ax=ax[i, 0], 
-                                            fraction=0.046, pad=0.04)
-                        cbar.set_ticks(cticks)
-                        cbar.set_label(metric, rotation=90, labelpad=2)
-                        
-                        ax[i, 1].bar(bticks, vals,
-                                     width=bini, align='edge',
-                                     alpha=0.75, 
-                                     color=cmap(range(len(bticks))),
-                                     edgecolor='k')
-            
-                        ax[i, 1].set_title(compslabs[i], 
-                                           fontsize=18, y=1.02)
-                        ax[i, 1].set_xlabel(metric)
-                        ax[i, 1].set_ylabel('Fraction of pixels')
-                        ax[i, 1].set_xlim(lims)
-                        ax[i, 1].set_xticks(cticks)
-                        ax[i, 1].set_xticklabels(cticks, 
-                                                 rotation=90, fontsize=14)
-                        # ax[i, 1].set_yscale('log')
-                        
-                    else:
-                        im = plotRGB(ax[0], auy, units,
-                                     cedges, redges, xedges, yedges, 
-                                     fontsiz=12,
-                                     vmin=lims[0], vmax=lims[1], cmap=cmap)
-                        ax[0].contour(np.flip(roi, 0), 
-                                         [0.5], linewidths=2, colors='black')
-            
-                        cbar = plt.colorbar(im, ax=ax[0], 
-                                            fraction=0.046, pad=0.04)
-                        cbar.set_ticks(cticks)
-                        cbar.set_label(metric, rotation=90, labelpad=2)
-            
-                        ax[1].bar(bticks, vals,
-                                     width=bini, align='edge',
-                                     alpha=0.75, 
-                                     color=cmap(range(len(bticks))),
-                                     edgecolor='k')
-            
-                        ax[1].set_title(compslabs[i],
-                                        fontsize=18, y=1.02)
-                        ax[1].set_xlabel(metric)
-                        ax[1].set_ylabel('Fraction of pixels')
-                        ax[1].set_xlim(lims)
-                        ax[1].set_xticks(cticks)
-                        ax[1].set_xticklabels(cticks, 
-                                              rotation=90, fontsize=14)
-                        # ax[1].set_yscale('log')
+                else:
+                    im = plotRGB(ax[0], auy, units,
+                                 cedges, redges, xedges, yedges, fontsiz=12,
+                                 vmin=lims[0], vmax=vmax, cmap=cmap)
+                    ax[0].contour(np.flip(roi, 0), 
+                                     [0.5], linewidths=2, colors='black')
+                    ax[0].set_xlim([0, auy.shape[0]])
+                    ax[0].set_ylim([0, auy.shape[1]])
+        
+                    cbar = plt.colorbar(im, ax=ax[0], 
+                                        fraction=0.046, pad=0.04)
+                    cbar.set_ticks(cticks[cticks <= vmax])
+                    cbar.set_label(metric, rotation=90, labelpad=2)
+        
+                    ax[1].bar(bbticks[:-1], vals,
+                                 width=bini, align='edge',
+                                 alpha=0.75, 
+                                 color=cmap(range(len(bbticks[:-1]))),
+                                 edgecolor='k')
+        
+                    ax[1].set_title('(' + cl1  + '::' + cl2 + ')',
+                                    fontsize=18, y=1.02)
+                    ax[1].set_xlabel(metric)
+                    ax[1].set_ylabel('Fraction of pixels')
+                    ax[1].set_xlim([lims[0], vmax])
+                    ax[1].set_xticks(cticks[cticks <= vmax])
+                    # ax[1].set_yscale('log')
+     
 
         if do_plots:
             fig.suptitle('Sample ID: ' + str(sid), fontsize=24, y=.95)
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         
         # shift column 'comp' to first position
-        if (len(comp_metrics) > 0):
-            comp_metrics.insert(0, 'comp', comp_metrics.pop('comp'))
-            comp_metrics.insert(1, 'number_of_levels', 
-                                comp_metrics.pop('number_of_levels'))
-        
+        comp_metrics.insert(0, 'comp', comp_metrics.pop('comp'))
         
     return([fig, comp_metrics] )
 
@@ -2035,15 +2088,15 @@ def plotCompLandscape_simple(sid, raster, roi, idx, shape,
 
     nlevs = 20
     bini = (lims[1] - lims[0])/(nlevs)
-    bins = np.round(np.arange(lims[0], lims[1] + bini, bini), 3)
-    cticks = np.arange(lims[0], lims[1]+2*bini, 2*bini)
-    bticks = np.arange(lims[0], lims[1], bini)
+    cticks = np.arange(lims[0], lims[1] + 2*bini, 2*bini)
+    bticks = np.arange(lims[0], lims[1] + bini, bini)
     
     [ar, redges, cedges, xedges, yedges] = plotEdges(shape, binsiz, scale)
 
     vmax = lims[1]
-        
-    cmap = plt.get_cmap('jet', len(bins))
+    bbticks = bticks[bticks <= vmax] 
+    
+    cmap = plt.get_cmap('jet', len(bbticks))
 
     import warnings
     with warnings.catch_warnings():
@@ -2059,20 +2112,19 @@ def plotCompLandscape_simple(sid, raster, roi, idx, shape,
         # generates discrete values of the factor
         auy = aux.copy()
         auy[np.isnan(aux)] = 0
-        
-        inx = np.digitize(auy, bticks)
-        inx[np.isnan(aux)] = 0
-        
-        auy = bticks[inx - 1]
+        inx = np.digitize(auy, bticks[:-1])
+        auy = bticks[inx]
         auy[np.isnan(aux)] = np.nan
             
         im = plotRGB(ax, auy, units,
                      cedges, redges, xedges, yedges, fontsiz=24,
                      vmin=lims[0], vmax=vmax, cmap=cmap)
+        ax.set_xlim([0, aux.shape[0]])
+        ax.set_ylim([0, aux.shape[1]])
         ax.contour(np.flip(roi, 0), 
                    [0.5], linewidths=2, colors='black')
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_ticks(cticks)
+        cbar.set_ticks(cticks[cticks <= vmax])
         #cbar.set_label(metric, rotation=90, labelpad=2)
         
         ttl = 'Sample ID: ' + str(sid) + '\n' + metric
@@ -2170,8 +2222,6 @@ def plotCompCorrelations(classes, raster, comps, ttl, lims):
 
 
 def plotPatchHists(sid, df, res_pth):
-    
-    import matplotlib as mpl
 
     lmes = pd.unique(df['LME']).tolist()
     lab = ['LME class: ' + i for i in lmes]
@@ -2267,8 +2317,6 @@ def plotPatchHists(sid, df, res_pth):
 
 def plotClassHists(sid, df, res_pth):
     # plot some patch metrics distributions
-    
-    import matplotlib as mpl
 
     lmes = pd.unique(df['LME']).tolist()
     cols = [mpl.cm.jet(x) for x in np.linspace(0, 1, len(lmes))]
@@ -2466,15 +2514,14 @@ def main(args):
 
     """
     # %% debug starts
-    debug = False
+    debug = True
 
-    start = time.time()
     
     if debug:
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS.csv')
+        argsfile = os.path.join(main_pth, 'PC_1.csv')
         REDO = True
         GRPH = True
         CASE = 0
@@ -2488,8 +2535,6 @@ def main(args):
         CASE = args.casenum
 
     print("==> The working directory is: " + main_pth)
-    print("==> Is CUDA available: " + str(ISCUDA))
-
     
     if not os.path.exists(argsfile):
         print("ERROR: The specified argument file does not exist!")
@@ -2498,8 +2543,9 @@ def main(args):
     # NOTE: only ONE line in the argument table will be used
     study = Study( pd.read_csv(argsfile).iloc[0], main_pth)
     
-    # %% STEP 0: loads sample case and folders for results
-    sample = study.getSample(CASE)
+    # %% STEP 0: creates data directories and new sample table
+    # creates sample object and data folders for processed data
+    sample = study.getStudy(CASE)
     
     # SID for display
     sid = sample.sample_ID
@@ -2512,10 +2558,15 @@ def main(args):
     if (sample.num_cells > 0):
         
         # output sample data filenames
+        # landpkl = os.path.join(sample['res_pth'], sid +'_landscape.pkl')
         samplcsv = os.path.join(sample['res_pth'], sid +'_lme_tbl.csv')
         
+        #GO = False
+        #if (sample['num_cells'] > 10000):
+        GO = (REDO or (not os.path.exists(samplcsv)))
+        
         # if processed landscape do not exist
-        if (REDO or (not os.path.exists(samplcsv))):
+        if (GO):
               
             print( msg + " >>> processing..." )
         
@@ -2579,12 +2630,6 @@ def main(args):
         print( msg + " >>> dropped sample..." )
     
     # %% end
-    t = time.strftime('%H:%M:%S', time.gmtime(time.time()-start))
-    print('Analysis finished. Time elapsed: ', t, '[HH:MM:SS]')
-    
-    with open(study.done_list, 'a') as f:
-        f.write(sample.sid + '\n')
-        
     return(0)        
         
 

@@ -1,7 +1,6 @@
 #!/bin/bash
 
 IFS=','
-mkdir -p log
 
 # get samples_file name and determine number of samples to be processed
 read name raw_path raw_samples_table raw_classes_table data_path rest < <(sed "1d" "$1")
@@ -11,8 +10,14 @@ ncases=$(($(wc -l < $samples_files) - 1))
 
 echo "TLA: Processing ($ncases) samples in study <$1>" 
 
-# run all samples in a slum array
-steps=$(sbatch --array=1-$ncases --parsable --export=STUDY=$1,GRAPH=$2,REDO=$3 src/tla_sample.sh)
+source /opt/anaconda3/etc/profile.d/conda.sh
+conda activate tlaenv
+
+# run all samples in study
+for (( I=0; I<$ncases; I++ ))
+    do
+	python src/tla_sample.py $1 $I $2 $3
+    done
 
 # run the tla summary
-sums=$(sbatch --dependency=afterok:$steps --parsable --export=STUDY=$1 src/tla_sum.sh)
+python src/tla_sum.py $1

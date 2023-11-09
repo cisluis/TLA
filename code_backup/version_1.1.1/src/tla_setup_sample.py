@@ -24,27 +24,18 @@ import os
 import sys
 import gc
 import math
-import time
 import warnings
 import pandas as pd
 import numpy as np
-import torch
 import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image
 from argparse import ArgumentParser
 
-if torch.cuda.is_available(): 
-    ISCUDA = True
-else:
-    ISCUDA = False
-    
 Image.MAX_IMAGE_PIXELS = 600000000
 
-# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:10240"
+__version__  = "1.1.1"
 
-
-__version__  = "2.0.0"
 
 # %% Private classes
 
@@ -69,27 +60,23 @@ class Study:
       # sets path for processed data
       self.dat_path = mkdirs(os.path.join(main_pth, study['data_path']))
       
-      # list of processed samples
-      self.done_list = os.path.join(self.dat_path, 'setup_done_samples.csv')
-      
       # scale parameters
-      self.factor = np.float32(1.0)
+      self.factor = 1.0
       if 'factor' in study:
           self.factor = study['factor']
-      self.scale = np.float32(study['scale']/self.factor)
+      self.scale = study['scale']/self.factor
       self.units = study['units']
 
       # the size of quadrats and subquadrats
-      aux = 4*np.ceil((study['binsiz']/self.scale)/4)
-      self.binsiz = np.rint(aux).astype('int32')
-      self.subbinsiz = np.rint(self.binsiz/4).astype('int32')
+      self.binsiz = int(4*np.ceil((study['binsiz']/self.scale)/4))
+      self.subbinsiz = int(self.binsiz/4)
 
       # bandwidth size for convolutions is half the quadrat size
-      self.supbw = np.rint(self.binsiz/2).astype('int32')
-      self.bw = np.rint(self.subbinsiz/2).astype('int32')
+      self.supbw = int(self.binsiz/2)
+      self.bw = int(self.subbinsiz/2)
       
       # r values for Ripleys' H function
-      dr = np.rint(self.bw/2).astype('int32')
+      dr = int(self.bw/2)
       self.rs = list(np.arange(dr, (self.binsiz/2)+dr, dr))
       self.ridx = (np.abs(np.asarray(self.rs) - self.supbw)).argmin()
 
@@ -121,7 +108,6 @@ class Study:
       self.samples_out = pd.DataFrame()
       self.allstats_out = pd.DataFrame()
       self.allpops_out = pd.DataFrame()
-      
       
 class Sample:
     
@@ -158,22 +144,19 @@ class Sample:
       # other sample attributes (to be filled later)    
       self.cell_data = pd.DataFrame() # dataframe of cell data (coordinates)
       self.imshape = []               # shape of accepted image
-      
-      # sample arrays
       self.img = []                   # image array
       self.msk = []                   # mask array (blobs)
       self.roiarr = []                # ROI array
-      
-      # global spacial factors
-      self.coloc = []
-      self.nndist = []
-      self.rhfunc = []
       
       # stats
       self.qstats = []                # quadrat statistics table 
       self.mstats = []                # general statistics table 
       
-      
+      # global spacial factors
+      self.coloc = []
+      self.nndist = []
+      self.rhfunc = []
+
       # creates results folder and add path to sample tbl
       f = mkdirs(os.path.join(study.dat_path, 'results', 'samples', self.sid))
       self.tbl['results_dir'] = 'results/samples/' + self.sid + '/'
@@ -212,9 +195,13 @@ class Sample:
             
       # raster file names
       self.raster_folder = f
+      self.tbl['roi_file'] =  pth + self.sid + '_roi.npz'
       self.roi_file = os.path.join(f, self.sid + '_roi.npz')
+      self.tbl['kde_file'] = pth +  self.sid + '_kde.npz'
       self.kde_file = os.path.join(f, self.sid + '_kde.npz')
+      self.tbl['abumix_file'] = pth + self.sid + '_abumix.npz'
       self.abumix_file = os.path.join(f, self.sid + '_abumix.npz')
+      self.tbl['spafac_file'] = pth + self.sid + '_spafac.npz'
       self.spafac_file = os.path.join(f, self.sid + '_spafac.npz')
       
       # classes info file
@@ -248,28 +235,20 @@ class Sample:
       cxy['class'] = cxy['class'].astype(str)
       cxy = cxy.loc[cxy['class'].isin(self.classes['class'])]
       
-      #############
-      #### code to estimate the NN distances between all cells
+      # # estimates the NN distances between all cells
       # from scipy.spatial import KDTree
       # rc = np.array(cxy[['x', 'y']])
       # dnn, _ = KDTree(rc).query(rc, k=[2])
       # dmin = np.min(dnn)  
       # if dmin > 2:
-      #     # rescaling factor is such that min cell distance is sqrt(2)
-      #     #(which is the max distance between adjcent cell in square grid)
-      #     self.factor = np.sqrt(2)/dmin
-      # NOTE: This part of the code is only to determine a good factor value
-      #       DO NOT UNCOMMENT... use it find a value and edit in the 
-      #       parameter file for the study (so all samples have the same value)
-      #       then re-run the analysis
+      #     self.factor = self.factor*(2/dmin)
           
-      # updates coordinae values by conversion factor (from pix to piy)
-      cxy.x = np.uint32(cxy.x*self.factor)
-      cxy.y = np.uint32(cxy.y*self.factor)  
+      # updates coordinae values by conversion factor (from pix to xip)
+      cxy.x, cxy.y = np.int32(cxy.x*self.factor), np.int32(cxy.y*self.factor)  
           
       # gets extreme pixel values
-      xmin, xmax = np.uint32(np.min(cxy.x)), np.uint32(np.max(cxy.x))
-      ymin, ymax = np.uint32(np.min(cxy.y)), np.uint32(np.max(cxy.y))
+      xmin, xmax = np.min(cxy.x), np.max(cxy.x)
+      ymin, ymax = np.min(cxy.y), np.max(cxy.y)
 
       imshape = [np.nan, np.nan]
 
@@ -290,11 +269,9 @@ class Sample:
       if self.ismk:
           if os.path.exists(self.raw_mkfile):
               msc = io.imread(self.raw_mkfile)
-              imsh = (np.uint32(msc.shape[0]*self.factor),
-                      np.uint32(msc.shape[1]*self.factor))
-              msc = resize(msc, imsh, 
-                           anti_aliasing=True, 
-                           preserve_range=True).astype('uint8')
+              imsh = (msc.shape[0]*self.factor,
+                      msc.shape[1]*self.factor)
+              msc = resize(msc, imsh, anti_aliasing=True, preserve_range=True)
               imshape = msc.shape
           else:
               print("WARNING: image: " + self.raw_mkfile + " not found!")
@@ -314,10 +291,10 @@ class Sample:
       # limits for image cropping
       with warnings.catch_warnings():
           warnings.simplefilter("ignore")
-          rmin = np.nanmax([0, ymin - edge]).astype('uint32')
-          cmin = np.nanmax([0, xmin - edge]).astype('uint32')
-          rmax = np.nanmin([imshape[0] - 1, ymax + edge]).astype('uint32')
-          cmax = np.nanmin([imshape[1] - 1, xmax + edge]).astype('uint32')
+          rmin = np.nanmax([0, ymin - edge])
+          cmin = np.nanmax([0, xmin - edge])
+          rmax = np.nanmin([imshape[0] - 1, ymax + edge])
+          cmax = np.nanmin([imshape[1] - 1, xmax + edge])
       
       dr = rmax - rmin
       dc = cmax - cmin
@@ -325,70 +302,35 @@ class Sample:
           print("ERROR: data file " + self.raw_cell_data_file + \
                 " is an empty landscape!")
           sys.exit()
-      imshape = [(dr + 1), (dc + 1)]
-      
-      
-      #############
-      #### code to estimate the cell overlaps after subsampling with factor
-      # factor = 8
-      # data = cxy.copy()
-      # data.x = np.rint(data.x/factor).astype('int64')
-      # data.y = np.rint(data.y/factor).astype('int64')
-      
-      # N = len(data)
-      # aux = data.groupby(['x','y', 'class'], as_index = False).size()
-      # df = aux.pivot(index=['x','y'], 
-      #               columns='class', 
-      #               values = 'size').fillna(0).reset_index()  
-      # df = df.rename(columns={"1": "n1", "2": "n2", "3": "n3"})
-      # df["ntot"] = df["n1"]+df["n2"]+df["n3"]
-      # df = df[df['ntot']>1]
-      # df['numzeros'] = (df == 0).astype(int).sum(axis=1)
-      # nmax = int(np.max(df["ntot"]))
-            
-      # cts, bins, fig1 = plt.hist(df["ntot"], bins=range(2,nmax+1))
-      # cts = 100*np.multiply(cts, bins[:-1])/N
-      
-      # aux=df.loc[df['numzeros']==2]
-      # cts2, bins, fig = plt.hist(aux["ntot"], bins=range(2,nmax+1))
-      # cts2 = 100*np.multiply(cts2, bins[:-1])/N
-      
-      # aux=df.loc[df['numzeros']==1]
-      # cts1, bins, fig = plt.hist(aux["ntot"], bins=range(2,nmax+1))
-      # cts1 = 100*np.multiply(cts1, bins[:-1])/N
-      
-      # aux=df.loc[df['numzeros']==0]
-      # cts0, bins, fig = plt.hist(aux["ntot"], bins=range(2,nmax+1))
-      # cts0 = 100*np.multiply(cts0, bins[:-1])/N
-      
-      
+          
+      imshape = [int(dr + 1), int(dc + 1)]
+
       # shifts coordinates
       cell_data = xyShift(cxy, imshape, [rmin, cmin], self.scale)
 
       # create croped versions of image and mask raster
-      img = np.zeros((imshape[0], imshape[1], 3), dtype='uint8')
+      img = np.zeros((imshape[0], imshape[1], 3))
       if self.isimg:
           img[0:(rmax - rmin), 
-              0:(cmax - cmin), :] = ims[rmin:rmax, 
-                                        cmin:cmax, :].astype('uint8')
-          self.img = img
+              0:(cmax - cmin), :] = ims[rmin:rmax, cmin:cmax, :]
+          self.img = img.astype('uint8')
           io.imsave(self.imfile, self.img, check_contrast=False)
       else:
           self.img = img
       
-      msk = np.zeros(imshape, dtype='uint8')
+      msk = np.zeros(imshape)
       if self.ismk:
           msk[0:(rmax - rmin), 
-              0:(cmax - cmin)] = msc[rmin:rmax, cmin:cmax].astype('uint8')
+              0:(cmax - cmin)] = msc[rmin:rmax, cmin:cmax]
           [cell_data, msk_img] = getBlobs(cell_data, msk)
-          np.savez_compressed(self.mask_file, roi=msk_img)
-          self.msk = (msk_img > 0).astype('bool')
+          self.msk = msk_img
+          np.savez_compressed(self.mask_file, roi=self.msk)
       else:
           self.msk = msk
       
       self.cell_data = cell_data.reset_index(drop=True)
-      self.imshape = np.uint32(imshape)    
-      self.num_cells = np.uint32(len(self.cell_data))
+      self.imshape = imshape    
+      self.num_cells = len(self.cell_data)
       
       
   def save_data(self):
@@ -429,22 +371,21 @@ class Sample:
       self.imshape = [self.roiarr.shape[0], self.roiarr.shape[1]]
       
       if (self.isimg ):
-          self.img = io.imread(self.imfile).astype('uint8')
+          self.img = io.imread(self.imfile)
       else:    
-          self.img = np.zeros((self.imshape[0], 
-                               self.imshape[1], 3), dtype='uint8')
+          self.img = np.zeros((self.imshape[0], self.imshape[1], 3))
           
       if self.ismk:
           aux = np.load(self.mask_file)
-          self.msk = aux['roi'].astype('bool')
+          self.msk = aux['roi']
       else:
-          self.msk = np.zeros(self.imshape, dtype='bool')
+          self.msk = np.zeros(self.imshape)
   
     
   def output(self, study): 
       
       samples_out = self.tbl.to_frame().T
-      samples_out = samples_out.astype({'num_cells': 'uint32'})
+      samples_out = samples_out.astype({'num_cells': int})
       samples_out = samples_out.astype(study.samples.dtypes)
       samples_out.to_csv(os.path.join(self.res_pth, 
                                       self.sid + '_samples.csv'), 
@@ -480,7 +421,7 @@ class Sample:
       hd_code =  study.HIGH_DENS_CODE
       ld_code = study.LOW_DENS_CODE
       denthr = study.DTHRES
-      blobs = (self.ismk) and (study.BLOBS)
+      blobs = study.BLOBS
 
       data = self.cell_data.copy()
       data['orig_class'] = data['class']
@@ -509,31 +450,20 @@ class Sample:
               irc = np.array(aux[['i', 'row', 'col']])
               
               # do KDE on pixel locations of target cells (e.g. tumor cells)
-              [_, _, z] = KDE(aux, self.imshape, self.supbw, cuda=ISCUDA)
+              [_, _, z] = KDE(aux, self.imshape, self.supbw)
     
-              #### code to find a good 'denthr'
-              # z[z<=1e-5] = 1e-5
-              # lz = np.log10(z)
-              # plt.hist(lz.ravel(), bins = np.arange(-5, 2, .1))
-              # plt.show()
-              # denthr = 5
-              
               # generate a binary mask
               mask = arrayLevelMask(z, denthr, self.supbw, fill_holes=False)
     
-              # plt.figure()
-              # plt.imshow(z)
-              # plt.figure()
-              # plt.imshow(mask)
-              
               # tag masked out cells
-              ii = np.ones(len(data), dtype='bool')
+              ii = np.ones(len(data))
               ii[irc[:, 0]] = mask[irc[:, 1], irc[:, 2]]
+              data['masked'] = (ii < 1)
     
               # redefine possibly misclasified target cells by means of 
               # the KDE filter (i.e. those in low density regions)
-              data.loc[np.logical_not(ii), 'class'] = ld_code
-              data.drop(columns=['i'], inplace=True)
+              data.loc[data['masked'], 'class'] = ld_code
+              data.drop(columns=['masked', 'i'], inplace=True)
 
       # drop cells not in the approved class list
       self.cell_data = data.loc[data['class'].isin(self.classes['class'])]
@@ -550,20 +480,19 @@ class Sample:
           from myfunctions import kdeMask
           
           # gets a mask for the region that has cells inside
-          [_, self.roiarr] = kdeMask(self.cell_data, self.imshape, 
-                                     self.bw, cuda=ISCUDA)
+          [_, self.roiarr] = kdeMask(self.cell_data, self.imshape, self.bw)
           np.savez_compressed(fout, roi=self.roiarr)
       
       else:
             
           aux = np.load(fout)
-          self.roiarr = aux['roi'].astype('bool')
+          self.roiarr = aux['roi']
       
       # filter out cells outside of ROI
       self.cell_data = filterCells(self.cell_data, self.roiarr)
       
       # total number of cells (after filtering) 
-      self.num_cells = np.uint32(len(self.cell_data)) 
+      self.num_cells = len(self.cell_data) 
       
       
   def kde_mask(self, redo):
@@ -599,19 +528,17 @@ class Sample:
               aux = self.cell_data.loc[self.cell_data['class'] == row['class']]
               if (len(aux) > 0):
                   # do KDE on pixel locations of cells
-                  [z, _] = kdeMask(aux, self.imshape, self.bw, cuda=ISCUDA)
-                  
+                  [z, _] = kdeMask(aux, self.imshape, self.bw)
                   kdearr[:, :, i] = z*self.roiarr
                   del z
               del aux 
-          
-          kdearr = np.float64(kdearr) 
+              
           np.savez_compressed(fout, kde=kdearr)
               
       else:
           
           aux = np.load(fout)
-          kdearr = np.float64(aux['kde'])
+          kdearr = aux['kde']
           del aux 
    
       # clean memory
@@ -651,19 +578,28 @@ class Sample:
       """
       
       classes = self.classes.copy() 
-      classes['mean_abundance'] = np.float64(0.0)
-      classes['std_abundance'] = np.float64(np.nan)
-      classes['mean_mixing'] = np.float64(0.0)
-      classes['std_mixing'] = np.float64(np.nan)
+      classes['mean_abundance'] = 0
+      classes['std_abundance'] = np.nan
+      classes['mean_mixing'] = 0
+      classes['std_mixing'] = np.nan
       
       fout = self.abumix_file
       if redo or not os.path.exists(fout):
  
+          from scipy.signal import convolve
+          from myfunctions import circle
+    
           abuarr = np.full((self.imshape[0], self.imshape[1], 
                             len(classes)), np.nan)
           mixarr = np.full((self.imshape[0], self.imshape[1], 
                             len(classes)), np.nan)
-              
+    
+          # produces a (circular) kernel with same size as quadrat
+          kernel = circle(self.bw) # box-circle
+          # kernel = gkern(self.bw) # gaussian (not correct)
+          # area of kernel
+          A = np.sum(kernel)
+    
           for i, clss in classes.iterrows():
     
               # get smooth (binned) cell location field for this class
@@ -671,35 +607,50 @@ class Sample:
              
               if (np.sum(x) > 0):
     
-                  [msk, N, M] = abumix(x, self.bw, cuda=ISCUDA)
+                  # mask of cell locations
+                  msk = 1.0*(x > 0)
+        
+                  # dispersion in local abundance
+                  xx = convolve(np.multiply(x, x), kernel, mode='same')
+                  xx[msk == 0] = 0
+        
+                  # number of cells in kernel (local abundance)
+                  N = convolve(x, kernel, mode='same')
+                  N[msk == 0] = np.nan
+                  
+                  # calculates the MH univariate index
+                  NN = np.multiply(N, N)
+                  M = 2 * np.divide(NN, (A*xx + NN),
+                                    out=np.zeros(msk.shape),
+                                    where=(msk > 0))
+                  
+                  # revert NAN values
+                  M[M > 1.0] = 1.0
+                  M[M < 0.0] = 0.0
+                  M[msk == 0] = np.nan
         
                   # assign raster values
                   abuarr[:, :, i] = N
                   mixarr[:, :, i] = M
                   
                   # get basic stats
-                  n = np.mean(N[msk])
+                  n = np.mean(N[msk > 0])
                   if ( n > 0):
                       classes.loc[classes['class'] == clss['class'],
-                                  'mean_abundance'] = np.round(n, 4)
-                      aux = np.round(np.std(N[msk]), 6)
+                                  'mean_abundance'] = n
                       classes.loc[classes['class'] == clss['class'],
-                                  'std_abundance'] = aux
-                      aux = np.round(np.nanmean(M[msk]), 4)
+                                  'std_abundance'] = np.std(N[msk > 0])
                       classes.loc[classes['class'] == clss['class'],
-                                  'mean_mixing'] = aux
-                      aux = np.round(np.nanstd(M[msk]), 6)
+                                  'mean_mixing'] = np.nanmean(M[msk > 0])
                       classes.loc[classes['class'] == clss['class'],
-                                  'std_mixing'] = aux
+                                  'std_mixing'] = np.nanstd(M[msk > 0])
                       
                   del msk
+                  del xx
                   del N
                   del M
                   
               del x
-              
-              abuarr = np.float64(abuarr)
-              mixarr = np.float64(mixarr)
               
               # saves raster
               np.savez_compressed(fout, abu=abuarr, mix=mixarr)
@@ -708,8 +659,8 @@ class Sample:
           
           # loads raster
           aux = np.load(fout)
-          abuarr = np.float64(aux['abu'])
-          mixarr = np.float64(aux['mix'])
+          abuarr = aux['abu']
+          mixarr = aux['mix']
           
           for i, clss in classes.iterrows():
               
@@ -719,32 +670,23 @@ class Sample:
               if (np.sum(x) > 0):
     
                   # mask of cell locations
-                  msk = (x > 0)
+                  msk = 1.0*(x > 0)
               
                   # assign raster values
                   N = abuarr[:, :, i]
                   M = mixarr[:, :, i]
                   
                   # get basic stats
-                  n = np.mean(N[msk])
+                  n = np.mean(N[msk > 0])
                   if ( n > 0):
                       classes.loc[classes['class'] == clss['class'],
-                                  'mean_abundance'] = np.round(n, 4)
-                      aux = np.round(np.std(N[msk]), 6)
+                                  'mean_abundance'] = n
                       classes.loc[classes['class'] == clss['class'],
-                                  'std_abundance'] = aux
-                      aux = np.round(np.nanmean(M[msk]), 4)
+                                  'std_abundance'] = np.std(N[msk > 0])
                       classes.loc[classes['class'] == clss['class'],
-                                  'mean_mixing'] = aux
-                      aux = np.round(np.nanstd(M[msk]), 6)
+                                  'mean_mixing'] = np.nanmean(M[msk > 0])
                       classes.loc[classes['class'] == clss['class'],
-                                  'std_mixing'] = aux
-                      
-                  del msk
-                  del N
-                  del M
-                  
-              del x
+                                  'std_mixing'] = np.nanstd(M[msk > 0])
  
       # updates classes df
       self.classes = classes  
@@ -791,24 +733,20 @@ class Sample:
                                       'total': [n]})
                   for i, code in enumerate(self.classes['class']):
                       # record abundance of this class
-                      auy = np.float32([abuarr[rc[0], rc[1], i]])
-                      aux[code] = np.round(auy, 4)
+                      aux[code] = [abuarr[rc[0], rc[1], i]]
 
                       # record mixing level of this class
                       # (per Morisita-Horn univariate score)
-                      auy = np.float32([mixarr[rc[0], rc[1], i]])
-                      aux[code + '_MH'] = np.round(auy, 4)
+                      aux[code + '_MH'] = [mixarr[rc[0], rc[1], i]]
 
                   pop = pd.concat([pop, aux], ignore_index=True)
 
-      self.qstats = pop.astype({'row': np.uint32, 
-                                'col': np.uint32,
-                                'total': np.float64})
+      self.qstats = pop.astype({'row': int, 'col': int})
 
 
   def space_stats(self, redo, dat_path):
         """
-        Calculates global statistics in raster arrays:
+        Calculates pixel resolution statistics in raster arrays:
             
         1- Colocalization index (spacial Morisita-Horn score):
            Symetric score between each pair of classes
@@ -841,7 +779,7 @@ class Sample:
         fout = self.spafac_file
         if redo or not os.path.exists(fout):
         
-            from myfunctions import fftconv2d
+            from scipy.signal import convolve
             from myfunctions import circle, nndist, attraction_T_biv
             from myfunctions import ripleys_K, ripleys_K_biv
             
@@ -854,37 +792,32 @@ class Sample:
             A = np.sum(self.roiarr)
     
             # raster array of cell locations
-            X = np.zeros((self.imshape[0], self.imshape[1], nc),
-                          dtype='uint8')
+            X = np.zeros((self.imshape[0], self.imshape[1], nc))
             # raster array of cell abundance in subkernels
-            n = np.zeros((self.imshape[0], self.imshape[1], nc, len(self.rs)),
-                         dtype='uint32')
+            n = np.zeros((self.imshape[0], self.imshape[1], nc, len(self.rs)))
     
             # cell global densities
-            ptdens = np.zeros(nc, dtype='float64')
+            ptdens = np.zeros(nc)
             
             # Colocalization index
-            colocarr = np.float64(np.full((nc, nc), np.nan))
+            colocarr = np.full((nc, nc), np.nan)
             
             # Nearest Neighbor Distance index
-            nndistarr = np.float64(np.full((nc, nc), np.nan))
+            nndistarr = np.full((nc, nc), np.nan)
             
             # precalculate local abundance for all classes and radii
             # (needs to be precalculated for combination measures)
             for i, clsx in self.classes.iterrows():
+                
                 # coordinates of cells in class x
                 aux = data.loc[data['class'] == clsx['class']]
                 if (len(aux) > 0):
                     ptdens[i] = len(aux)/A
                     X[aux.row, aux.col, i] = 1
                     for k, r in enumerate(self.rs):
-                        auy = np.rint(fftconv2d(X[:, :, i], 
-                                                circle(r), cuda=ISCUDA))
-                        auy[auy<0]=0
-                        n[:,:,i,k] = np.uint32(auy)
-                        del auy
-                        gc.collect()
-                                              
+                        auy = convolve(X[:, :, i], circle(r), mode='same')
+                        n[:,:,i,k] = np.abs(np.rint(auy))
+                                                          
             rsp = list(np.around(np.array(self.rs) * self.scale, decimals=2))
             df = pd.DataFrame({'sample_ID': [str(x) for x in self.rs],
                                'r': self.rs, 'r_physical': rsp})
@@ -893,13 +826,13 @@ class Sample:
                                          decimals=2)
                                                              
             # Attraction Function Score 
-            aefuncarr = np.float32(np.full((nc, nc, len(self.rs), 2), np.nan))
+            aefuncarr = np.full((nc, nc, len(self.rs), 2), np.nan)
             aefuncarr[:, :, 0:len(self.rs), 0]= self.rs
             aefuncdf = df.copy()
             aefuncdf.sample_ID = self.sid            
                                                              
             # Ripley's H function
-            rhfuncarr = np.float64(np.full((nc, nc, len(self.rs), 2), np.nan))
+            rhfuncarr = np.full((nc, nc, len(self.rs), 2), np.nan)
             rhfuncarr[:, :, 0:len(self.rs), 0]= self.rs
             rhfuncdf = df.copy()
             rhfuncdf.sample_ID = self.sid            
@@ -927,12 +860,10 @@ class Sample:
                                               ptdens[i],
                                               dy)
                         aefuncarr[i, i, k, 1] = tk
-                    
-                    gc.collect()
-                    
+                        
                     nam = clsx['class'] + '_' + clsx['class']
-                    rhfuncdf['H_' + nam] = np.round(rhfuncarr[i, i, :, 1],4) 
-                    T = aefuncarr[i, i, :, 1].astype('int')
+                    rhfuncdf['H_' + nam] = rhfuncarr[i, i, :, 1] 
+                    T = aefuncarr[i, i, :, 1].astype('int') 
                     aefuncdf['T_' + nam] = T
         
                     # Colocalization index (identity)
@@ -974,8 +905,7 @@ class Sample:
                                     aefuncarr[i, j, k, 1] = tk
                                     
                                 nam =  clsx['class'] + '_' + clsy['class']
-                                v = np.round(rhfuncarr[i, j, :, 1], 4)
-                                rhfuncdf['H_' + nam] = v
+                                rhfuncdf['H_' + nam] = rhfuncarr[i, j, :, 1] 
                                 T = aefuncarr[i, j, :, 1].astype('int') 
                                 aefuncdf['T_' + nam] = T
             
@@ -1018,11 +948,6 @@ class Sample:
                              self.sid, self.sid + '_Attraction_T_score.csv')
             aefuncdf.to_csv(f, index=False, header=True)
             
-            colocarr = np.float64(colocarr)
-            nndistarr = np.float64(nndistarr)
-            aefuncarr = np.float64(aefuncarr)
-            rhfuncarr = np.float64(rhfuncarr)
-            
             np.savez_compressed(self.spafac_file, 
                                 coloc=colocarr,
                                 nndist=nndistarr,
@@ -1038,10 +963,10 @@ class Sample:
         else:
               
             aux = np.load(fout)
-            colocarr = np.float64(aux['coloc'])
-            nndistarr = np.float64(aux['nndist'])
-            aefuncarr = np.float64(aux['aefunc'])
-            rhfuncarr = np.float64(aux['rhfunc'])
+            colocarr = aux['coloc']
+            nndistarr = aux['nndist']
+            aefuncarr = aux['aefunc']
+            rhfuncarr = aux['rhfunc']
             
         
         self.coloc = colocarr
@@ -1060,9 +985,9 @@ class Sample:
       from scipy.spatial import KDTree
             
       # general properties
-      N = np.uint32(len(self.cell_data))
-      A = np.float64(np.sum(self.roiarr))
-      roi_area = np.float64(np.round(A*self.scale*self.scale, 4))
+      N = len(self.cell_data)
+      A = np.sum(self.roiarr)
+      roi_area = round(A*self.scale*self.scale, 4)
             
       # update sample table
       self.tbl['num_cells'] = N
@@ -1070,7 +995,7 @@ class Sample:
       
       # load kde array
       aux = np.load(self.kde_file)
-      kdearr = np.float64(aux['kde'])
+      kdearr = aux['kde']
          
       # estimate typical cell size based of density of points
       self.rcell = getCellSize(np.sum(kdearr, axis=2), self.binsiz)
@@ -1091,7 +1016,7 @@ class Sample:
           stats[c + '_num_cells'] = n
           
           if (A>0):
-              stats[c + '_den_cells'] = np.round(n/A, 6)
+              stats[c + '_den_cells'] = n/A
           else:
               stats[c + '_den_cells'] = np.nan
             
@@ -1100,38 +1025,35 @@ class Sample:
       for comp in comps:   
           ca = self.classes.iloc[comp[0]]['class']
           cb = self.classes.iloc[comp[1]]['class']
-          aux = np.round(self.coloc[comp[0], comp[1]], 4)
-          stats['coloc_' + ca + '_' + cb] = aux
+          stats['coloc_' + ca + '_' + cb] = self.coloc[comp[0], comp[1]]
           
       # records overal Nearest Neighbor Distance index at pixel level
       comps = list(permutations(self.classes.index.values.tolist(), 2))
       for comp in comps:   
           ca = self.classes.iloc[comp[0]]['class']
           cb = self.classes.iloc[comp[1]]['class']
-          aux = np.round(self.nndist[comp[0], comp[1]], 4)
-          stats['nndist_' + ca + '_' + cb] = aux
+          stats['nndist_' + ca + '_' + cb] = self.nndist[comp[0], comp[1]]
           
       # records overal Attraction Enrichment Function index at pixel level
       comps = list(product(self.classes.index.values.tolist(), repeat=2))
       for comp in comps:   
           ca = self.classes.iloc[comp[0]]['class']
           cb = self.classes.iloc[comp[1]]['class']
-          aux = np.round(self.aefunc[comp[0], comp[1],
-                                             self.ridx, 1], 4)
-          stats['aefunc_' + ca + '_' + cb] = aux
+          stats['aefunc_' + ca + '_' + cb] = self.aefunc[comp[0],
+                                                         comp[1],
+                                                         self.ridx, 1]
           
       # records overal Ripley's H score at pixel level
       comps = list(product(self.classes.index.values.tolist(), repeat=2))
       for comp in comps:   
           ca = self.classes.iloc[comp[0]]['class']
           cb = self.classes.iloc[comp[1]]['class']
-          aux = np.round(self.rhfunc[comp[0], comp[1],
-                                             self.ridx, 1], 4)
-          stats['rhfunc_' + ca + '_' + cb] = aux
-          
+          stats['rhfunc_' + ca + '_' + cb] = self.rhfunc[comp[0],
+                                                         comp[1],
+                                                         self.ridx, 1]
       if ( A > 0 ):
           tot_dens = N/A
-          tot_dens_units = np.round(N/roi_area, 4)
+          tot_dens_units = N/roi_area
       else:
           tot_dens = np.nan
           tot_dens_units = np.nan
@@ -1144,20 +1066,20 @@ class Sample:
           print('(*) Sample: ' + self.sid)
           print('(*) Landscape size (r,c)[pix]: ' + str(self.imshape) +
                 '; (x,y)' + self.units + ": " +
-                str([np.round(self.imshape[1]*self.scale, 2), 
-                     np.round(self.imshape[0]*self.scale, 2)]))
+                str([round(self.imshape[1]*self.scale, 2), 
+                     round(self.imshape[0]*self.scale, 2)]))
           print('(*) ROI area [pix]^2: ' + str(A) + '; ' +
                 self.units + "^2: " + str(roi_area))
           print('(*) Total cell density 1/[pix]^2: ' + 
-                str(np.round(tot_dens, 4)) + '; 1/' + self.units + "^2: " + 
-                str(np.round(tot_dens_units, 4)))
+                str(round(tot_dens, 4)) + '; 1/' + self.units + "^2: " + 
+                str(round(tot_dens_units, 4)))
           print('(*) Composition: ' + str(N) +
                 ' cells (uniquely identified, not overlaping):')
           print(self.classes[['class', 'class_name', 'number_of_cells',
                          'fraction_of_total']].to_markdown())
           print('(*) Typical radius of a cell [pix]: ' +
-                str(np.round(self.rcell, 4)) + ' ; ' + self.units + ': ' +
-                str(np.round(self.rcell*self.scale, 8)))
+                str(round(self.rcell, 4)) + ' ; ' + self.units + ': ' +
+                str(round(self.rcell*self.scale, 8)))
           print('(*) NNDistance quantiles [0, 0.25, 0.5, 0.75, 1] [pix]: ' +
                 str(np.round(dnnqs, 4)) + ' ; ' + self.units + ': ' +
                 str(np.round(dnnqs*self.scale, 8)))
@@ -1280,10 +1202,8 @@ class Sample:
       [r, c, z, m, levs, th] = kdeLevels(self.cell_data, 
                                          self.imshape, 
                                          self.bw)
-      
-      xv, yv = np.meshgrid(range(m.shape[1]), range(m.shape[0]))
-      xv = xv*self.scale
-      yv = (self.imshape[0] - yv)*self.scale
+      x = c*self.scale
+      y = (self.imshape[0] - r)*self.scale
       
       classes = self.classes.iloc[::-1]
 
@@ -1325,7 +1245,7 @@ class Sample:
                   ax[1, 0].grid(which='major', linestyle='--',
                                 linewidth='0.3', color='black')
               # plots roi contour over scatter
-              ax[1, 0].contour(xv, yv, m, [0.5], linewidths=2, colors='black')
+              ax[1, 0].contour(x, y, m, [0.5], linewidths=2, colors='black')
               ax[1, 0].set_title('Cell locations', fontsize=18, y=1.02)
               ax[1, 0].legend(labels=classes.class_name,
                               loc='best',
@@ -1335,7 +1255,7 @@ class Sample:
               ax[1, 0].set_ylim([lims[2], lims[3]])
     
               # plots kde levels
-              landscapeLevels(ax[1, 1], xv, yv, z, m, levs,
+              landscapeLevels(ax[1, 1], x, y, z, m, levs,
                               self.units, xedges, yedges, fontsiz=18)
               ax[1, 1].set_title('KDE levels', fontsize=18, y=1.02)
               ax[1, 1].set_xlim([lims[0], lims[1]])
@@ -1358,7 +1278,7 @@ class Sample:
                   ax[0].grid(which='major', linestyle='--',
                              linewidth='0.3', color='black')
               # plots roi contour over scatter
-              ax[0].contour(xv, yv, m, [0.5], linewidths=2, colors='black')
+              ax[0].contour(x, y, m, [0.5], linewidths=2, colors='black')
               ax[0].set_title('Cell locations', fontsize=18, y=1.02)
               ax[0].legend(labels=classes.class_name,
                            loc='best',
@@ -1368,7 +1288,7 @@ class Sample:
               ax[0].set_ylim([lims[2], lims[3]])
   
               # plots kde levels
-              landscapeLevels(ax[1], xv, yv, z, m, levs,
+              landscapeLevels(ax[1], x, y, z, m, levs,
                             self.units, xedges, yedges, fontsiz=18)
               ax[1].set_title('KDE levels', fontsize=18, y=1.02)
               ax[1].set_xlim([lims[0], lims[1]])
@@ -1402,10 +1322,8 @@ class Sample:
       [r, c, z, m, levs, th] = kdeLevels(aux, 
                                          self.imshape, 
                                          self.bw)
-            
-      xv, yv = np.meshgrid(range(m.shape[1]), range(m.shape[0]))
-      xv = xv*self.scale
-      yv = (self.imshape[0] - yv)*self.scale
+      x = c*self.scale
+      y = (self.imshape[0] - r)*self.scale
 
       classes = self.classes.iloc[::-1]
 
@@ -1428,7 +1346,7 @@ class Sample:
               ax[0].grid(which='major', linestyle='--',
                             linewidth='0.3', color='black')
           # plots roi contour over scatters
-          ax[0].contour(xv, yv, self.roiarr, 
+          ax[0].contour(x, y, self.roiarr, 
                         [.50], linewidths=2, colors='black')
           ax[0].set_title('Cell locations', fontsize=18, y=1.02)
           ax[0].legend(labels=classes.class_name,
@@ -1440,7 +1358,7 @@ class Sample:
 
  
           # plots kde levels
-          landscapeLevels(ax[1], xv, yv, z, m, levs,
+          landscapeLevels(ax[1], x, y, z, m, levs,
                           self.units, xedges, yedges, fontsiz=18)
           ax[1].set_title(tclass['class_name'] + ' - KDE levels', 
                           fontsize=18, y=1.02)
@@ -1509,8 +1427,8 @@ class Sample:
               plt.colorbar(im, ax=ax[i, 0], fraction=0.046, pad=0.04)
               ax[i, 0].set_title('Log Abundance image: ' + name,
                                  fontsize=18, y=1.02)
-              #ax[i, 0].set_xlim([lims[0], lims[1]])
-              #ax[i, 0].set_ylim([lims[2], lims[3]])
+              ax[i, 0].set_xlim([lims[0], lims[1]])
+              ax[i, 0].set_ylim([lims[2], lims[3]])
 
               # plots mix image
               im = plotRGB(ax[i, 1], mixim, self.units,
@@ -1519,8 +1437,8 @@ class Sample:
                            vmin=mixmin, vmax=mixmax, cmap='RdBu_r')
               plt.colorbar(im, ax=ax[i, 1], fraction=0.046, pad=0.04)
               ax[i, 1].set_title('Mixing image: ' + name, fontsize=18, y=1.02)
-              #ax[i, 1].set_xlim([lims[0], lims[1]])
-              #ax[i, 1].set_ylim([lims[2], lims[3]])
+              ax[i, 1].set_xlim([lims[0], lims[1]])
+              ax[i, 1].set_ylim([lims[2], lims[3]])
 
           fig.subplots_adjust(hspace=0.4)
           fig.suptitle('Sample ID: ' + str(self.sid), fontsize=24, y=.95)
@@ -1569,8 +1487,8 @@ def xyShift(data, shape, ref, scale):
     cell_data['col'] = cell_data['col'] - ref[1]
 
     # scale coordinates to physical units and transforms vertical axis
-    cell_data['x'] = np.float32(cell_data['col']*scale)
-    cell_data['y'] = np.float32((shape[0] - cell_data['row'])*scale)
+    cell_data['x'] = round(cell_data['col']*scale, 6)
+    cell_data['y'] = round((shape[0] - cell_data['row'])*scale, 6)
     
     # drops data points outside of frames
     cell_data = cell_data.loc[(cell_data['row'] >= 0) &
@@ -1580,86 +1498,6 @@ def xyShift(data, shape, ref, scale):
 
     return(cell_data)
 
-
-def abumix(x, bw, cuda = False):
-    
-    from myfunctions import circle
-    
-    # produces a (circular) kernel with same size as quadrat
-    kernel = circle(bw) # box-circle
-        
-    # area of kernel
-    A = np.sum(kernel)
-    
-    if cuda:
-        
-        from myfunctions import cudaconv2d
-        
-        # if GPU is available, uses pytorch cuda
-        
-        # create tensor objects
-        xs = torch.from_numpy(x).type(torch.float64).cuda()
-        ks = torch.from_numpy(kernel).type(torch.float64).cuda()
-        
-        # mask of cell locations
-        mskt = (xs > 0)
-        
-        # dispersion in local abundance
-        xx = cudaconv2d(torch.mul(xs, xs), ks)
-        xx[mskt == 0] = 0
-        
-        # number of cells in kernel (local abundance)
-        Nt = cudaconv2d(xs, ks)
-        Nt[mskt == 0] = 0
-        
-        # calculates the MH univariate index
-        NN = torch.mul(Nt, Nt)
-        denom = torch.add(A*xx, NN)
-        
-        # initialize output tensor with desired value
-        Mt = torch.full_like(xs, fill_value=np.nan)
-        Mt[mskt] = 2 * NN[mskt] / denom[mskt]
-        
-        # revert NAN values
-        Mt[Mt > 1.0] = 1.0
-        Mt[Mt < 0.0] = 0.0
-        Mt[mskt == 0] = np.nan
-        
-        # return to CPU as numpy
-        M = Mt.cpu().numpy()
-        N = Nt.cpu().numpy()
-        msk = mskt.cpu().numpy()
-        
-        del xs, ks, mskt, xx, Nt, NN, denom, Mt
-        torch.cuda.empty_cache()
-        
-    else:
-        
-        from scipy.signal import convolve
-    
-        # mask of cell locations
-        msk = (x > 0)
-
-        # dispersion in local abundance
-        xx = convolve(np.multiply(x, x), kernel, mode='same')
-        xx[msk == 0] = 0
-
-        # number of cells in kernel (local abundance)
-        N = convolve(x, kernel, mode='same')
-        N[msk == 0] = np.nan
-        
-        # calculates the MH univariate index
-        NN = np.multiply(N, N)
-        M = 2 * np.divide(NN, (A*xx + NN),
-                          out=np.zeros(msk.shape),
-                          where=(msk))
-        
-        # revert NAN values
-        M[M > 1.0] = 1.0
-        M[M < 0.0] = 0.0
-        M[msk == 0] = np.nan
-        
-    return([msk, np.float64(N), np.float64(M)])
 
 def getCellSize(cell_arr, r):
     """
@@ -1711,7 +1549,7 @@ def getBlobs(data, mask):
     from skimage import measure
 
     # get a binary image of the mask
-    msk_img = np.zeros(mask.shape, dtype='uint8')
+    msk_img = np.zeros(mask.shape)
     msk_img[mask > 127] = 1
 
     # label blobs in mask image
@@ -1725,8 +1563,7 @@ def getBlobs(data, mask):
 
     aux = pd.merge(data, msk_data, how="left",
                    on=["row", "col"]).fillna(0)
-    aux = aux.astype({'blob': np.uint32})
-    blobs_labels = blobs_labels.astype('uint32')
+    aux = aux.astype({'blob': int})
 
     return(aux, blobs_labels)
 
@@ -1740,14 +1577,12 @@ def main(args):
     """
     # %% debug starts
     debug = False
-    
-    start = time.time()
 
     if debug:
         # running from the IDE
         # path of directory containing this script
         main_pth = os.path.dirname(os.getcwd())
-        argsfile = os.path.join(main_pth, 'DCIS.csv')
+        argsfile = os.path.join(main_pth, 'PC.csv')
         REDO = True
         GRPH = True
         CASE = 0
@@ -1761,7 +1596,6 @@ def main(args):
         CASE = args.casenum
     
     print("==> The working directory is: " + main_pth)
-    print("==> Is CUDA available: " + str(ISCUDA))
     
     if not os.path.exists(argsfile):
         print("ERROR: The specified argument file does not exist!")
@@ -1828,7 +1662,7 @@ def main(args):
                 plt.imshow(mixarr[:,:,c], extent=extent)
         
         # %% STEP 7: calculates quadrat populations for coarse graining
-        sample.quadrat_stats(abuarr, mixarr);
+        sample.quadrat_stats(abuarr, mixarr)
         del abuarr
         del mixarr
         gc.collect()
@@ -1861,13 +1695,7 @@ def main(args):
             
     # %% LAST step: saves study stats results for sample 
     sample.output(study)
-    
-    t = time.strftime('%H:%M:%S', time.gmtime(time.time()-start))
-    print('Setup finished. Time elapsed: ', t, '[HH:MM:SS]')
-    
-    with open(study.done_list, 'a') as f:
-        f.write(sample.sid + '\n')
-      
+
     # %% the end
     return(0)
 

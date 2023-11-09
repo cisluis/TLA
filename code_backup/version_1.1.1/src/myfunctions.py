@@ -9,14 +9,10 @@ import pandas as pd
 import numpy as np
 import scipy.stats as sts
 import matplotlib as mpl
-# import matplotlib.pyplot as plt
-from scipy.signal import fftconvolve
-import torch
-from torch.fft import fft2, ifft2 
-from torch.nn.functional import pad
+import matplotlib.pyplot as plt
+from scipy.signal import convolve
 
-__version__  = "2.0.0"
-
+__version__  = "1.1.1"
 
 def mkdirs(path):
     # create folder if it doesn't exist
@@ -55,17 +51,18 @@ def printProgressBar(iteration, total,
     
     percent = ("{0:." + str(decimals) +
                "f}").format(100 * (iteration / float(total)))
-    filledLength = np.rint(length * iteration // total).astype('int16')
+    filledLength = int(length * iteration // total)
     bar = fill * filledLength + '-' * (length - filledLength)
     suf = suffix[0:80].ljust(80, " ")
     out = f'\r{prefix} |{bar}| {percent}% {suf}'
     print(out, end='\r')
+    #print(out)
+    #sys.stdout.write(out)
+    #sys.stdout.flush()
     
     # Print New Line on Complete
     if iteration == total:
         print()
-
-
 
 
 def circle(r):
@@ -74,7 +71,7 @@ def circle(r):
     (this is equivalent to a 2D heavyside function H_2(r))
     """
     y, x = np.ogrid[-r: r + 1, -r: r + 1]
-    return(np.float64(1.0*(x**2 + y**2 < r**2)))
+    return(1.0*(x**2 + y**2 < r**2))
 
 
 def gkern(sig):
@@ -88,79 +85,13 @@ def gkern(sig):
     aux = np.arange(-(l - 1) / 2., ((l - 1) / 2.) + 1)
     gauss = np.exp(-0.5 * np.square(aux) / np.square(sig))
     kernel = np.outer(gauss, gauss)
-    return (np.float64(kernel / np.sum(kernel)))
+    return (kernel / np.sum(kernel))
 
 
-def complex_product(x, y):
-    '''
-    Fast complex multiplication (Karatsuba multiplication)
-    (*) https://stackoverflow.com/questions/19621686/complex-numbers-product-using-only-three-multiplications
-    (*) https://en.wikipedia.org/wiki/Karatsuba_algorithm
-    '''
-    
-    # Extract the real and imaginary parts
-    a, b = x.real, x.imag
-    c, d = y.real, y.imag
-
-    # term by term products
-    ac = torch.mul(a, c)
-    bd = torch.mul(b, d)
-    ab_cd = torch.mul(torch.add(a, b), torch.add(c, d))
-    
-    return torch.complex(ac - bd, ab_cd - ac - bd)
-
-def cudaconv2d(imgs, filts):
-    # calculates 2D convolution using FFT in GPU using CUDA 
-
-    imgsshape = imgs.shape
-    filtsshape = filts.shape
-
-    # Pad and transform the image and filter
-    # Pad arg = (last dim pad left side, last dim pad right side, 
-    #            2nd last dim left side, etc..)
-    f_imgs = fft2(pad(imgs, (0, filtsshape[1] - 1, 0, filtsshape[0] - 1)))
-    f_filts = fft2(pad(filts, (0, imgsshape[1] - 1, 0, imgsshape[0] - 1)))
-    
-    # Do element wise complex multiplication and then reverse transform
-    img = ifft2(complex_product(f_imgs, f_filts)).real
-
-    # get back not-padded part
-    dc = np.rint((filtsshape[1]/2)).astype('int32')
-    dr = np.rint((filtsshape[0]/2)).astype('int32')
-    
-    return img[dr:(imgsshape[0]+dr), dc:(imgsshape[1]+dc)]
-
-
-def fftconv2d(img, filt, cuda=False):
-    
-    if cuda:
-        # if GPU is available, uses pytorch cuda
-        
-        # create tensor objects
-        imgs = torch.from_numpy(img).type(torch.float64).cuda()
-        filts = torch.from_numpy(filt).type(torch.float64).cuda()
-        
-        # does fft convolution in cuda
-        aux = cudaconv2d(imgs, filts)
-        
-        # return to CPU as numpy
-        imgout = aux.cpu().numpy()
-        
-        del imgs, filts, aux
-        torch.cuda.empty_cache()
-        
-    else:
-        # if GPU not available, uses scipy (faster than pytorch in CPU)
-        imgout = fftconvolve(img, filt, mode='same')
-        
-    return np.float64(imgout)
-
-
-def KDE(data, shape, bw, cuda=False):
+def KDE(data, shape, bw):
     """
     Evaluates a KDE using a convolution with a Fast Fourier Transform (FFT)
-    using array convolution 'fftconvolve' from scipy.signal (in CPU)
-    or torch (in GPU)
+    using array convolution 'convolve' from scipy.signal
 
     Parameters
     ----------
@@ -169,25 +100,18 @@ def KDE(data, shape, bw, cuda=False):
     - bw : (float) bandwidth; standard deviation of the KDE (gaussian) kernel
 
     """
-    kern = gkern(bw)
 
-    arr = np.zeros((shape[0], shape[1]), dtype='float64')
+    arr = np.zeros((shape[0], shape[1]))
     coords = np.array(data[['row', 'col']])
-    arr[coords[:,0], coords[:,1]] = 1.0
+    arr[coords[:,0], coords[:,1]] = 1
     
     # Compute the kernel density estimate
-    points = fftconv2d(arr, kern, cuda=cuda)
-    
-    # regularize negative and small values
-    v = 10**(np.around(np.log10(0.01/np.sum(kern>0)), 0)) 
-    points[points<v] = 0
+    points = convolve(arr, gkern(bw), mode='same')
 
     # normalizes the output to cells per grid unit
-    points = len(data)*(points/np.sum(points))
-    
-    return([coords[:,0].astype('uint32'), 
-            coords[:,1].astype('uint32'), 
-            points.astype('float64')])
+    points = len(data)*(points/sum(points))
+
+    return([coords[:,0], coords[:,1], points])
 
 
 def maskCells(cell_data, mask):
@@ -207,9 +131,9 @@ def maskCells(cell_data, mask):
     irc = np.array(aux[['i', 'row', 'col']])
 
     # get cells in data that are outside the mask
-    ii = np.ones(len(aux), dtype='bool')
+    ii = np.ones(len(aux))
     ii[irc[:, 0]] = mask[irc[:, 1], irc[:, 2]]
-    aux['masked'] = np.logical_not(ii)
+    aux['masked'] = (ii < 1)
 
     return(aux.drop(columns=['i']))
 
@@ -248,7 +172,7 @@ def arrayLevelMask(z, th, rmin, fill_holes=True):
     """
 
     from skimage.morphology import remove_small_objects, label
-    from scipy.ndimage import binary_fill_holes
+    from scipy.ndimage.morphology import binary_fill_holes
 
     lab = label((z > th).astype(int), connectivity=2) > 0
     aux = remove_small_objects(lab,
@@ -257,39 +181,31 @@ def arrayLevelMask(z, th, rmin, fill_holes=True):
     if fill_holes:
         aux = binary_fill_holes(aux)
 
-    return((aux > 0).astype('bool'))
+    return((aux > 0).astype(int))
 
 
-def kdeLevels(data, shape, bw, all_cells=True, toplev=1.0, cuda=False):
+def kdeLevels(data, shape, bw, all_cells=True, toplev=1.0):
 
     # Compute the kernel density estimate
-    [r, c, z] = KDE(data, shape, bw, cuda=cuda)
+    [r, c, z] = KDE(data, shape, bw)
 
     # threshold for landscape edge
-    aux = np.float64(z.copy())
-    aux[aux<=0]=np.nan
-    aux = np.around(np.log10(aux, where=aux > 0), 2)
-    
+    aux = np.around(np.log10(z), 2)
     if (all_cells):
-        if len(aux[aux > np.nanmin(aux)]) > 0:
-            # first value above background
-            th = 10**np.nanmin(aux[aux > np.nanmin(aux)])
-        else:
-            th = 10**np.nanmin(aux)
+        # first value above background
+        th = 10**np.min(aux[aux > np.min(aux)])
     else:
         # get top order of magnitud
-        th = 10**np.nanmin(aux[aux > (np.nanmax(aux) - toplev)])
-       
-    levs = 10**np.arange(np.floor(np.log10(th)), np.ceil(np.nanmax(aux)) + 1)
+        th = 10**np.min(aux[aux > (np.max(aux) - toplev)])
+    levs = 10**np.arange(np.floor(np.log10(th)), np.ceil(np.max(aux)) + 1)
 
-        
     # get mask at 'th' level (min size radius == bw)
     m = arrayLevelMask(z, th, bw, fill_holes=False)
 
     return([r, c, z, m, levs, th])
 
 
-def kdeMask(data, shape, bw, cuda=False):
+def kdeMask(data, shape, bw):
     """
     Calculates a pixel resolution KDE profile from cell location data and
     generates a mask for the bakground region (where no cells are found).
@@ -305,15 +221,20 @@ def kdeMask(data, shape, bw, cuda=False):
 
     if (len(data) > 0):
         # Compute the kernel density estimate and levels
-        [r, c, z, mask, levs, th] = kdeLevels(data, shape, bw, cuda=cuda)
+        [r, c, z, mask, levs, th] = kdeLevels(data, shape, bw)
      
-        # renormalizes z (to cells per unit pixel)
-        z[np.logical_not(mask)] = 0
-        z = np.float64(len(data)*(z/np.sum(z)))
-        
+        if (np.sum(mask) > 0):
+            # get number of cells in background region (~zero-density)
+            # and renormalizes z (to cells per unit pixel)
+            bg = np.sum(z[mask == 0])/np.sum(mask)
+            z = z + bg
+            z[mask == 0] = 0
+            z = len(data)*(z/np.sum(z))
+        else:
+            z[mask == 0] = 0
     else:
-        z = np.zeros(shape, dtype='float64')
-        mask = np.zeros(shape, dtype='bool')
+        z = np.zeros(shape)
+        mask = np.zeros(shape)
 
     return(z, mask)
 
@@ -375,30 +296,27 @@ def landscapeScatter(ax, xs, ys, col, lab, units, xedges, yedges,
 def landscapeLevels(ax, x, y, z, m, levs, units, xedges, yedges,
                     fontsiz=16):
 
-    from matplotlib.ticker import LogLocator
-    # from matplotlib.ticker import FuncFormatter
-    # from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+    from matplotlib.ticker import LogLocator, FuncFormatter
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
     # zeroes background
-    z[np.logical_not(m)] = 0.0
-    ax.contourf(x, y, z, levs, locator=LogLocator(), cmap='RdBu_r')
-    
-    # CS1 = ax.contourf(x, y, z, levs,
-    #                   locator=LogLocator(), cmap='RdBu_r')
-    # cbbox = inset_axes(ax, '15%', '50%', loc='lower right')
-    # [cbbox.spines[k].set_visible(False) for k in cbbox.spines]
-    # cbbox.tick_params(axis='both',
-    #                   left=False, top=False, right=False, bottom=False,
-    #                   labelleft=False, labeltop=False,
-    #                   labelright=False, labelbottom=False)
-    # cbbox.set_facecolor([1, 1, 1, 0.75])
-    # axins = inset_axes(cbbox, '35%', '90%',
-    #                    loc='center left')
+    z[m < 1] = 0.0
+    CS1 = ax.contourf(x, y, z, levs,
+                      locator=LogLocator(), cmap='RdBu_r')
 
-    # cbar = plt.colorbar(CS1, cax=axins, format=FuncFormatter(fmtSimple))
-    # axins.yaxis.set_ticks_position('right')
-    # cbar.ax.tick_params(labelsize=fontsiz)
-    
+    cbbox = inset_axes(ax, '15%', '50%', loc='lower right')
+    [cbbox.spines[k].set_visible(False) for k in cbbox.spines]
+    cbbox.tick_params(axis='both',
+                      left=False, top=False, right=False, bottom=False,
+                      labelleft=False, labeltop=False,
+                      labelright=False, labelbottom=False)
+    cbbox.set_facecolor([1, 1, 1, 0.75])
+    axins = inset_axes(cbbox, '35%', '90%',
+                       loc='center left')
+
+    cbar = plt.colorbar(CS1, cax=axins, format=FuncFormatter(fmtSimple))
+    axins.yaxis.set_ticks_position('right')
+    cbar.ax.tick_params(labelsize=fontsiz)
     ax.set_aspect(aspect=1)
     ax.contour(x, y, m, [0.5], linewidths=2, colors='green')
     ax.axis('square')
@@ -513,7 +431,7 @@ def morisita_horn_univariate(x, min_x=5, min_b=3):
     m = np.nan
     if sum(x) > 0:
         # get bin size of 'min_x' counts for the data density of x (if uniform)
-        bi = np.ceil(min_x*(len(x)/sum(x))).astype('int32')
+        bi = int(np.ceil(min_x*(len(x)/sum(x))))
 
         # copy of data
         z = x.copy()
@@ -549,7 +467,7 @@ def morisita_horn(x, y):
     return(2 * xy/(xx + yy))
 
 
-def morisita_horn_array(x, y, kernel, cuda=False):
+def morisita_horn_array(x, y, kernel):
     """
     Bivariate Morisita-Horn score: bewteen two 2D arrays using spacial
     deconvolution
@@ -560,46 +478,19 @@ def morisita_horn_array(x, y, kernel, cuda=False):
     - y: array of data containing counts of events per pixel.
     - kernel: small kernel array for deconvolution smoothing
     """
-    if cuda:
-        
-        # transfer arrays to GPU
-        xs = torch.from_numpy(x).type(torch.float64).cuda()
-        ys = torch.from_numpy(y).type(torch.float64).cuda()
-        ks = torch.from_numpy(kernel).type(torch.float64).cuda()
-        
-        # dispersion in x and y abundance
-        xx = torch.round(cudaconv2d(torch.mul(xs, xs), ks))
-        yy = torch.round(cudaconv2d(torch.mul(ys, ys), ks))
-        xy = torch.round(cudaconv2d(torch.mul(xs, ys), ks))
-        den = torch.add(xx, yy)
-        
-        # Morisita Index (colocalization score)
-        # initialize output tensor with desired value
-        aux = torch.full_like(xs, fill_value=np.nan)
-        aux[den > 0] = 2 * xy[den > 0]/ den[den > 0]
-        
-        # transfer arrays to CPU
-        out= aux.cpu().numpy()
-        
-        del xs, ys, ks, xx, yy, xy, den, aux
-        torch.cuda.empty_cache()
-        
-    else:    
-        # dispersion in x and y abundance
-        xx = np.rint(fftconvolve(np.multiply(x, x), kernel, mode='same'))
-        yy = np.rint(fftconvolve(np.multiply(y, y), kernel, mode='same'))
-        xy = np.rint(fftconvolve(np.multiply(x, y), kernel, mode='same'))
-        den = xx + yy
-        
-        # Morisita Index (colocalization score)
-        out = 2 * np.divide(xy, den, 
-                            out=np.ones(den.shape)*np.nan,
-                            where=(den > 0))
 
-    return(np.float64(out))
+    # dispersion in x and y abundance
+    xx = np.rint(convolve(np.multiply(x, x), kernel, mode='same'))
+    yy = np.rint(convolve(np.multiply(y, y), kernel, mode='same'))
+    xy = np.rint(convolve(np.multiply(x, y), kernel, mode='same'))
+    den = xx + yy
+
+    # Morisita Index (colocalization score)
+    return(2 * np.divide(xy, den,
+                         out=np.ones(den.shape)*np.nan, where=(den > 0)))
 
 
-def getis_ord_g_array(X, msk, cuda=False):
+def getis_ord_g_array(X, msk):
     """
     Gets-Ord G* at pixel resolution, using spacial deconvolution
 
@@ -615,48 +506,21 @@ def getis_ord_g_array(X, msk, cuda=False):
     # local neighborhood (to first rectangular neighbors )
     box = np.ones((3, 3))
     box[1, 1] = 0
-    
-    if cuda:
-        
-        # transfer arrays to GPU
-        Xs = torch.from_numpy(X).type(torch.float64).cuda()
-        ms = torch.from_numpy(msk).type(torch.float64).cuda()
-        bs = torch.from_numpy(box).type(torch.float64).cuda()
-        
-        # local number of neighbors in each pixel
-        sw = torch.round(cudaconv2d(ms, bs)[ms > 0])
-        sw = np.float64(sw.cpu().numpy())
-        
-        # weighted sum of x in each neighborhood
-        wx = torch.round(cudaconv2d(Xs, bs)[ms > 0])
-        wx = np.float64(wx.cpu().numpy())
-    
-        # x values in the roi
-        aux = Xs[msk > 0]
-        x = np.float64(aux.cpu().numpy())
-        
-        del Xs, ms, bs, aux
-        torch.cuda.empty_cache()
-        
-    else:        
 
-        # local number of neighbors in each pixel
-        sw = np.float64(np.rint(fftconvolve(msk, box, mode='same')[msk > 0]))
-    
-        # weighted sum of x in each neighborhood
-        wx = np.float64(np.rint(fftconvolve(X, box, mode='same')[msk > 0]))
-    
-        # x values in the roi
-        x = np.float64(X[msk > 0])
+    # local number of neighbors in each pixel
+    sw = np.rint(convolve(msk, box, mode='same')[msk > 0])
 
-    # do stats (inside ROI)
+    # weighted sum of x in each neighborhood
+    wx = np.rint(convolve(X, box, mode='same')[msk > 0])
+
+    # x values in the roi
+    x = X[msk > 0]
+
+    # do stats only inside ROI
     n = len(x)
     s = np.std(x)
     u = np.sqrt((n*sw - (sw**2))/(n-1))
-    aux = wx - np.mean(x)*sw
-    auy = s*u
-    z = np.divide(aux, auy, out=np.ones(aux.shape)*np.nan, where=(auy != 0))
-        
+    z = (wx - np.mean(x)*sw)/(s*u)
     #p = 2*norm.sf(np.abs(z))
     p = 2*(1 - special.ndtr(np.abs(z)))
     p[np.isnan(p)] = 1
@@ -679,7 +543,7 @@ def getis_ord_g_array(X, msk, cuda=False):
     aux[inx] = sig
     hot = aux.reshape(msk.shape)
 
-    return(np.float64(z), np.float32(hot))
+    return(z, hot)
 
 
 def nndist(rcx, rcy):
@@ -728,7 +592,7 @@ def nndist(rcx, rcy):
     return(nndi)
 
 
-def nndist_array(rcx, rcy, N, kernel, cuda=False):
+def nndist_array(rcx, rcy, N, kernel):
     """
     Nearest Neighbor Distance index using deconvolution method
 
@@ -752,70 +616,42 @@ def nndist_array(rcx, rcy, N, kernel, cuda=False):
 
     from scipy.spatial import KDTree
     
-    v = np.nan*np.ones(N.shape)
-    
-    if ((len(rcx) > 1) & (len(rcy) > 0)):
+    if (len(rcx) > 1):
 
         # get nearest neighbor distances of ref cells with their own type
         dnnxx, innxx = KDTree(rcx).query(rcx, k=[2])
         # turns into array form
-        nnxx = np.zeros((N.shape[0], N.shape[1]), dtype=np.float64)
-        nnxx[rcx[:, 0], rcx[:, 1]] = np.float64(dnnxx[:, 0])
+        nnarr = np.zeros((N.shape[0], N.shape[1]))
+        nnarr[rcx[:, 0], rcx[:, 1]] = dnnxx[:, 0]
+
+        # local mean of NNdistance (dividing by local number of ref cells)
+        aux = convolve(nnarr, kernel, mode='same')
+        aux[aux < 0] = 0
+        mdnnxx = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
         
-        # get nearest neighbor distances to test cells
-        dnnxy, innxy = KDTree(rcy).query(rcx, k=[1])
-        # turns to array form
-        nnxy = np.zeros((N.shape[0], N.shape[1]), dtype=np.float64)
-        nnxy[rcx[:, 0], rcx[:, 1]] = np.float64(dnnxy[:, 0])
-        
-        if cuda:
-            # transfer arrays to GPU
-            xs = torch.from_numpy(nnxx).type(torch.float64).cuda()
-            ys = torch.from_numpy(nnxy).type(torch.float64).cuda()
-            ks = torch.from_numpy(kernel).type(torch.float64).cuda()
-            Ns = torch.from_numpy(N).type(torch.float64).cuda()
+        if (len(rcy) > 0) :
             
-            # local mean of NNdistance (dividing by local number of ref cells)
-            aux = cudaconv2d(xs, ks)
-            aux[aux < 0] = 0
-            mdnnxx = torch.full_like(xs, fill_value=np.nan)
-            mdnnxx[Ns > 0] = aux[Ns > 0]/Ns[Ns > 0]
-            
-            # local mean of NNdistance (dividing by local number of ref cells)
-            aux = cudaconv2d(ys, ks)
-            aux[aux < 0] = 0
-            mdnnxy = torch.full_like(ys, fill_value=np.nan)
-            mdnnxy[Ns > 0] = aux[Ns > 0]/Ns[Ns > 0]
-    
-            # gets (locally) ratio of mean NNDist
-            aux = torch.full_like(xs, fill_value=np.nan)
-            aux[mdnnxx > 0] = mdnnxy[mdnnxx > 0] / mdnnxx[mdnnxx > 0]
-            aux[aux <= 0] = np.nan
-            v = torch.log10(aux).cpu().numpy()
-            
-            del xs, ys, ks, Ns, aux, mdnnxx, mdnnxy
-            torch.cuda.empty_cache()
-        
-        else:  
+            # get nearest neighbor distances to test cells
+            dnnxy, innxy = KDTree(rcy).query(rcx, k=[1])
+            # turns to array form
+            nnarr = np.zeros((N.shape[0], N.shape[1]))
+            nnarr[rcx[:, 0], rcx[:, 1]] = dnnxy[:, 0]
 
             # local mean of NNdistance (dividing by local number of ref cells)
-            aux = fftconvolve(nnxx, kernel, mode='same')
-            aux[aux < 0] = 0
-            mdnnxx = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
-        
-            # local mean of NNdistance (dividing by local number of ref cells)
-            aux = fftconvolve(nnxy, kernel, mode='same')
+            aux = convolve(nnarr, kernel, mode='same')
             aux[aux < 0] = 0
             mdnnxy = np.divide(aux, N, out=np.zeros(N.shape), where=(N > 0))
 
             # gets (locally) ratio of mean NNDist
             v = np.divide(mdnnxy, mdnnxx, out=np.zeros(N.shape), 
                           where=(mdnnxx > 0))
-            v[v <= 0] = np.nan
-            v = np.log10(v)
+        v[v <= 0] = np.nan
+        v = np.log10(v)
         
-        
-    return(np.float64(v))
+    else:
+        v = np.nan*np.ones(N.shape)
+
+    return(v)
 
 
 def attraction_T_biv(rcx, lambday, ny):
@@ -862,7 +698,7 @@ def attraction_T_biv(rcx, lambday, ny):
     return(np.sign(t)*(p < 0.05))
 
 
-def attraction_T_array_biv(rcx, Ny, dy, kernel, cuda=False):
+def attraction_T_array_biv(rcx, Ny, dy, kernel):
     """
     Attraction Enrichment Functions score T
 
@@ -890,54 +726,27 @@ def attraction_T_array_biv(rcx, Ny, dy, kernel, cuda=False):
     
     pout = np.full(Ny.shape, np.nan)
     
-    D = Ny/np.sum(kernel)
-    N = Ny.astype(np.uint32)
-    
     if (len(rcx) > 0):
         
-        if cuda:
-            # create tensor objects
-            dys = torch.from_numpy(dy).type(torch.float64).cuda()
-            ks = torch.from_numpy(kernel).type(torch.float64).cuda()
-            Ds = torch.from_numpy(D).type(torch.float64).cuda()
-            Ns = torch.from_numpy(N).type(torch.float64).cuda()
-            
-            # do t-test on array terms
-            m2d = torch.full_like(Ns, fill_value=np.nan)
-            m2d[Ns > 0] = torch.mul(dys, dys)[Ns > 0] / Ns[Ns > 0]  
-            
-            numer = cudaconv2d(dys, ks) - torch.mul(Ds, Ns)
-            denom = torch.sqrt(cudaconv2d(torch.mul(dys, dys), ks) - m2d)
-            
-            inx = (Ns > 0) & (denom != 0)
-            aux = torch.full_like(Ns, fill_value=np.nan)
-            aux[inx] = numer[inx] / denom[inx]
-            t = aux.cpu().numpy()
-            
-            del dys, ks, Ds, Ns, m2d, numer, denom, aux, inx
-            torch.cuda.empty_cache()
-            
-        else:
-            
-            # NOTE: THERE IS A BUG HERE... 
-            # THE TERM (md2 - m2d) IS NEGATIVE SOMETIMES!
-            
-            # do t-test on array terms
-            md = fftconvolve(dy, kernel, mode='same')
-            md2 = fftconvolve(np.multiply(dy, dy), kernel, mode='same')
-            m2d = np.divide(np.multiply(md, md), N, 
-                            out=np.full(N.shape, np.nan), where=(N > 0))   
-            t = np.divide(md - np.multiply(D, N), 
-                          np.sqrt(md2 - m2d), 
-                          out=np.full(N.shape, np.nan), where=(N > 0))  
-            
-        p = np.full(Ny.shape, np.nan, dtype=np.float64)
-    
+        D = Ny/(np.sum(kernel))
+        N = Ny.astype(int)
+        
+        # do t-test on array terms
+        md = convolve(dy, kernel, mode='same')
+        md2 = convolve(np.multiply(dy, dy), kernel, mode='same')
+        m2d = np.divide(np.multiply(md, md), N, 
+                        out=np.full(N.shape, np.nan), where=(N > 0))   
+        t = np.divide(md - np.multiply(D, N), 
+                      np.sqrt(md2 - m2d), 
+                      out=np.full(N.shape, np.nan), where=(N > 0))  
+        
+        p = np.full(Ny.shape, np.nan)
+        
         # for elements with N > 30 use normal distribution approximation
         (r,c) = np.where(N>30)
         p[r,c] = 2*(1 - special.ndtr(np.abs(t[r,c])))
         
-        # for elements with N < 30 use standard t distribution approximation
+        # for elements with N > 30 use normal distribution approximation
         (r,c) = np.where(N<30)
         p[r,c] =2*(1 - special.stdtr(N[r,c], np.abs(t[r,c])))
         
@@ -948,7 +757,7 @@ def attraction_T_array_biv(rcx, Ny, dy, kernel, cuda=False):
         
         pout = np.sign(t)*(p < 0.05)
         
-    return(np.float32(pout))
+    return(pout)
 
 
 def ripleys_K(rc, n):
@@ -990,7 +799,7 @@ def ripleys_K(rc, n):
     return(ripley)
 
 
-def ripleys_K_array(rc, n, N, kernel, cuda=False):
+def ripleys_K_array(rc, n, N, kernel):
     """
     Ripley's K index using deconvolution method
 
@@ -1013,43 +822,20 @@ def ripleys_K_array(rc, n, N, kernel, cuda=False):
     ripley = np.ones(N.shape)*np.nan
     
     if (len(rc) > 1):
-        
+    
         # number of neighbors (at subkernel scale) around each point
-        Ir = np.zeros((n.shape[0], n.shape[1]))
+        Ir = np.zeros((N.shape[0], N.shape[1]))
         Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
-    
-        if cuda:
-            # transfer arrays to GPU
-            Ns = torch.from_numpy(N).type(torch.float64).cuda()
-            Irs = torch.from_numpy(Ir).type(torch.float64).cuda()
-            ks = torch.from_numpy(kernel).type(torch.float64).cuda()
-            
-            # number of pair comparisons in each kernel (degenerate)
-            npairs = torch.mul(Ns, Ns - 1)/2
         
-            # Ripley's K sum (do sum of Ir for each kernel)
-            aux = torch.round(cudaconv2d(Irs, ks))
-            aux[aux<0]=0
-            
-            auy = torch.full_like(npairs, fill_value=np.nan)
-            auy[npairs > 0] = aux[npairs > 0] / npairs[npairs > 0] 
-            ripley = (auy*torch.sum(ks)).cpu().numpy()
-            
-            del Ns, Irs, ks, npairs, aux, auy
-            torch.cuda.empty_cache()
-            
-        else:      
-            # number of pair comparisons in each kernel (degenerate)
-            npairs = np.multiply(N, N - 1)/2
-        
-            # Ripley's K sum (do sum of Ir for each kernel)
-            aux = np.rint(fftconvolve(Ir, kernel, mode='same'))
-            aux[aux<0]=0
-            ripley = np.sum(kernel) * np.divide(aux, npairs,
-                                                out=np.zeros(Ir.shape),
-                                                where=(npairs > 0))     
+        # number of pair comparisons in each kernel (degenerate)
+        npairs = np.multiply(N, N - 1)/2
     
-    return(np.float64(ripley))
+        # Ripley's K sum (do sum of Ir for each kernel)
+        aux = np.rint(convolve(Ir, kernel, mode='same'))
+        ripley = np.sum(kernel) * np.divide(aux, npairs,
+                                            out=np.zeros(Ir.shape),
+                                            where=(npairs > 0))     
+    return(ripley)
 
 
 def ripleys_K_biv(rcx, nx, rcy, ny):
@@ -1093,7 +879,7 @@ def ripleys_K_biv(rcx, nx, rcy, ny):
     return(ripley)
 
 
-def ripleys_K_array_biv(rcx, nx, Nx, ny, Ny, kernel, cuda=False):
+def ripleys_K_array_biv(rcx, nx, Nx, ny, Ny, kernel):
     """
     Bivariate Ripley's K index using deconvolution method
 
@@ -1119,47 +905,19 @@ def ripleys_K_array_biv(rcx, nx, Nx, ny, Ny, kernel, cuda=False):
     ripley = np.ones(nx.shape)*np.nan
     
     if (len(rcx) > 0):
-        
+
         # 'test' neighbors (at subkernel scale) around each 'ref' point
         Ir = np.zeros((Nx.shape[0], Nx.shape[1]))
         Ir[rcx[:, 0], rcx[:, 1]] = ny[rcx[:, 0], rcx[:, 1]]
-        
-        if cuda:
-            # transfer arrays to GPU
-            Nxs = torch.from_numpy(Nx).type(torch.float64).cuda()
-            Nys = torch.from_numpy(Ny).type(torch.float64).cuda()
-            Irs = torch.from_numpy(Ir).type(torch.float64).cuda()
-            ks = torch.from_numpy(kernel).type(torch.float64).cuda()
-            
-            # number of pair comparisons in each kernel (non-degenerate)
-            npairs = torch.mul(Nxs, Nys)
-    
-            # Ripley's K sum (do sum of Ir for each kernel)
-            aux = torch.round(cudaconv2d(Irs, ks))
-            aux[aux<0]=0
-            
-            auy = torch.full_like(npairs, fill_value=np.nan)
-            auy[npairs > 0] = aux[npairs > 0] / npairs[npairs > 0] 
-            ripley = (auy*torch.sum(ks)).cpu().numpy()
-            
-            del Nxs, Nys, Irs, ks, npairs, aux, auy
-            torch.cuda.empty_cache()
-            
-        else:
+        # number of pair comparisons in each kernel (non-degenerate)
+        npairs = np.multiply(Nx, Ny)
 
-            # 'test' neighbors (at subkernel scale) around each 'ref' point
-            Ir = np.zeros((Nx.shape[0], Nx.shape[1]))
-            Ir[rcx[:, 0], rcx[:, 1]] = ny[rcx[:, 0], rcx[:, 1]]
-            # number of pair comparisons in each kernel (non-degenerate)
-            npairs = np.multiply(Nx, Ny)
-    
-            # Ripley's K sum (do sum of Ir for each kernel)
-            aux = np.abs(np.rint(fftconvolve(Ir, kernel, mode='same')))
-            aux[aux<0]=0
-            ripley = np.sum(kernel) * np.divide(aux, npairs,
-                                                out=np.zeros(Ir.shape),
-                                                where=(npairs > 0))
-    return(np.float64(ripley))
+        # Ripley's K sum (do sum of Ir for each kernel)
+        aux = np.abs(np.rint(convolve(Ir, kernel, mode='same')))
+        ripley = np.sum(kernel) * np.divide(aux, npairs,
+                                            out=np.zeros(Ir.shape),
+                                            where=(npairs > 0))
+    return(ripley)
 
 
 def SSH_factor_detector(Y, factor_name,
@@ -1858,7 +1616,6 @@ def SSH_risk_detector_df(data, y_column, x_column, THR=0.05):
     """
     
     from statsmodels.sandbox.stats.multicomp import multipletests
-    import warnings
     
     # unique strata values (can be categorical values)
     # strata = list(set(data[x_column]))
@@ -1879,10 +1636,7 @@ def SSH_risk_detector_df(data, y_column, x_column, THR=0.05):
                 if (len(yi) > 1 and len(yj) > 1):
                     # Welch’s t-test
                     # (does not assume equal population variances)
-                    with warnings.catch_warnings():
-                        
-                        warnings.simplefilter('ignore')
-                        [tij, pij] = sts.ttest_ind(yi, yj, equal_var=False)
+                    [tij, pij] = sts.ttest_ind(yi, yj, equal_var=False)
 
                     aux = pd.DataFrame({'strata': [x_column],
                                         'stratum_i': [si],

@@ -27,23 +27,22 @@ To get started please follow these instructions:
 
 ``` 
 
-* Alternativelly, to build a virtual environment for TLA step by step (including the Spyder 5.4.5 IDE) use these commands:
+* Alternativelly, to build a virtual environment for TLA step by step (including the Spyder 5.3.0 IDE) use these commands:
 
 ```
 > conda update conda
 > conda create -n tlaenv python=3.8
 > conda activate tlaenv
-> pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-> conda install -y -c conda-forge spyder=5.4.5
-> conda install -y -c conda-forge pandas matplotlib-base scipy tabulate swifter statannot rasterio openblas geopandas
-> conda install -y -c conda-forge pylandstats=3.0.0  
+> conda install -y -c conda-forge spyder=5.3.0
+> conda install -y -c conda-forge matplotlib-base scipy tabulate swifter statannot rasterio openblas geopandas pylandstats  
+> pip install KDEpy
 > conda install -y -c anaconda scikit-image statsmodels seaborn
 > conda update --all -y
 > conda env export > tlaenv.yml
 
 ```
+__But this is not necessary__ unless you want to change or customize something, as all these steps are encapsulated in the `tlaenv.yml` file.
 
-__NOTE:__ it is highly recommended to install `mamba` right after doing `conda update conda`, and using the command "mamba" instead of "conda" in all the following steps. 
 
 ## Workspace Structure
 

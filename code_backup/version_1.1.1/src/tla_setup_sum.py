@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from argparse import ArgumentParser
 
-__version__  = "2.0.0"
+__version__  = "1.1.1"
 
 
 # %% Private classes
@@ -43,20 +43,19 @@ class Study:
           os.makedirs(self.dat_path)
           
       # scale parameters
-      self.factor = np.float32(1.0)
+      self.factor = 1.0
       if 'factor' in study:
           self.factor = study['factor']
-      self.scale = np.float32(study['scale']/self.factor)
+      self.scale = study['scale']/self.factor
       self.units = study['units']
 
       # the size of quadrats and subquadrats
-      aux = 4*np.ceil((study['binsiz']/self.scale)/4)
-      self.binsiz = np.rint(aux).astype('int32')
-      self.subbinsiz = np.rint(self.binsiz/4).astype('int32')
+      self.binsiz = int(4*np.ceil((study['binsiz']/self.scale)/4))
+      self.subbinsiz = int(self.binsiz/4)
 
       # bandwidth size for convolutions is half the quadrat size
-      self.supbw = np.rint(self.binsiz/2).astype('int32')
-      self.bw = np.rint(self.subbinsiz/2).astype('int32')
+      self.supbw = int(self.binsiz/2)
+      self.bw = int(self.subbinsiz/2)
       
       # reduces classes df to just the accepted types (i.e. `drop=False`)
       classes_file = os.path.join(self.raw_path, study['raw_classes_table'])
@@ -114,7 +113,7 @@ class Study:
                     self.allpops_out = pd.concat([self.allpops_out, aux], 
                                                  ignore_index=True)
                 else:
-                    print("WARNING: sample: " + sid + " was dropped from TLA!")
+                    print("WARNING: sample: " + sid + " was droped from TLA!")
             
       # saves study tables
       self.samples_out = self.samples_out.astype({'num_cells': int})

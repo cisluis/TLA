@@ -34,8 +34,8 @@ dependencies:
   - brotlipy=0.7.0=py38h9ed2024_1003
   - brunsli=0.1=h23ab428_0
   - bzip2=1.0.8=h1de35cc_0
-  - c-ares=1.19.1=h6c40b1e_0
-  - ca-certificates=2023.08.22=hecd8cb5_0
+  - c-ares=1.19.0=h6c40b1e_0
+  - ca-certificates=2023.05.30=hecd8cb5_0
   - cairo=1.16.0=h3ce6f7e_5
   - cctools_osx-64=949.0.1=hc7db93f_25
   - certifi=2023.7.22=py38hecd8cb5_0
@@ -53,15 +53,14 @@ dependencies:
   - click-plugins=1.1.1=pyhd3eb1b0_0
   - cligj=0.7.2=py38hecd8cb5_0
   - cloudpickle=2.2.1=py38hecd8cb5_0
-  - cmake=3.22.1=hbfa4a85_0
   - colorama=0.4.6=py38hecd8cb5_0
   - comm=0.1.2=py38hecd8cb5_0
   - compiler-rt=14.0.6=hda8b6b8_0
   - compiler-rt_osx-64=14.0.6=h8d5cb93_0
   - contourpy=1.0.5=py38haf03e11_0
   - cookiecutter=1.7.3=pyhd3eb1b0_0
-  - cryptography=41.0.3=py38ha2381d6_0
-  - curl=8.2.1=hdb2fb19_0
+  - cryptography=41.0.2=py38h2093b18_0
+  - curl=8.1.1=hdb2fb19_2
   - cycler=0.11.0=pyhd3eb1b0_0
   - cyrus-sasl=2.1.28=h9b9944d_1
   - cytoolz=0.12.0=py38hca72f7f_0
@@ -79,7 +78,7 @@ dependencies:
   - docutils=0.18.1=py38hecd8cb5_3
   - entrypoints=0.4=py38hecd8cb5_0
   - executing=0.8.3=pyhd3eb1b0_0
-  - expat=2.5.0=hcec6c5f_0
+  - expat=2.5.0=hf0c8a7f_1
   - fiona=1.8.22=py38h07fba90_0
   - flake8=6.0.0=py38hecd8cb5_0
   - folium=0.14.0=py38hecd8cb5_0
@@ -88,7 +87,6 @@ dependencies:
   - freetype=2.12.1=hd8bbffd_0
   - freexl=1.0.6=h9ed2024_0
   - fsspec=2023.4.0=py38hecd8cb5_0
-  - future=0.18.3=py38hecd8cb5_0
   - gast=0.5.3=pyhd3eb1b0_0
   - gdal=3.0.2=py38h0405137_6
   - geopandas=0.12.2=py38hecd8cb5_0
@@ -149,7 +147,7 @@ dependencies:
   - libclang=14.0.6=default_hd95374b_1
   - libclang-cpp14=14.0.6=default_hd95374b_1
   - libclang13=14.0.6=default_habbcc1a_1
-  - libcurl=8.2.1=ha585b31_0
+  - libcurl=8.1.1=ha585b31_2
   - libcxx=14.0.6=h9765a3e_0
   - libdap4=3.19.1=h3d3e54a_0
   - libdeflate=1.17=hb664fd8_0
@@ -169,13 +167,11 @@ dependencies:
   - libopenblas=0.3.21=h54e7dc3_0
   - libpng=1.6.39=h6c40b1e_0
   - libpq=12.15=hdb2fb19_1
-  - libprotobuf=3.20.3=hfff2838_0
   - libsodium=1.0.18=h1de35cc_0
   - libspatialindex=1.9.3=h23ab428_0
   - libspatialite=4.3.0a=h82abe45_21
   - libssh2=1.10.0=hdb2fb19_2
-  - libtiff=4.5.1=hcec6c5f_0
-  - libuv=1.44.2=h6c40b1e_0
+  - libtiff=4.5.0=hcec6c5f_2
   - libwebp=1.2.4=hf6ce154_1
   - libwebp-base=1.2.4=h6c40b1e_1
   - libxml2=2.9.14=hbf8cd5e_0
@@ -188,8 +184,8 @@ dependencies:
   - lz4-c=1.9.4=hcec6c5f_0
   - mapclassify=2.5.0=py38hecd8cb5_0
   - markupsafe=2.1.1=py38hca72f7f_0
-  - matplotlib=3.7.2=py38hecd8cb5_0
-  - matplotlib-base=3.7.2=py38hee32256_0
+  - matplotlib=3.7.1=py38hecd8cb5_1
+  - matplotlib-base=3.7.1=py38hda11e5a_1
   - matplotlib-inline=0.1.6=py38hecd8cb5_0
   - mccabe=0.7.0=pyhd3eb1b0_0
   - mistune=2.0.4=py38hecd8cb5_0
@@ -205,12 +201,10 @@ dependencies:
   - nbconvert=7.3.1=pyhd8ed1ab_0
   - nbconvert-core=7.3.1=pyhd8ed1ab_0
   - nbconvert-pandoc=7.3.1=pyhd8ed1ab_0
-  - nbformat=5.9.2=py38hecd8cb5_0
+  - nbformat=5.7.0=py38hecd8cb5_0
   - ncurses=6.4=hcec6c5f_0
   - nest-asyncio=1.5.6=py38hecd8cb5_0
   - networkx=3.1=py38hecd8cb5_0
-  - ninja=1.10.2=hecd8cb5_5
-  - ninja-base=1.10.2=haf03e11_5
   - nomkl=3.0=0
   - numexpr=2.8.4=py38h57a7bef_1
   - numpy=1.24.3=py38h57a7bef_0
@@ -219,13 +213,13 @@ dependencies:
   - openblas=0.3.21=hecd8cb5_0
   - openblas-devel=0.3.21=hecd8cb5_0
   - openjpeg=2.4.0=h66ea3da_0
-  - openssl=1.1.1w=hca72f7f_0
-  - packaging=23.1=py38hecd8cb5_0
+  - openssl=1.1.1v=hca72f7f_0
+  - packaging=23.0=py38hecd8cb5_0
   - pandas=2.0.3=py38h3ea8b11_0
   - pandoc=2.12=hecd8cb5_3
   - pandocfilters=1.5.0=pyhd3eb1b0_0
   - parso=0.8.3=pyhd3eb1b0_0
-  - partd=1.4.0=py38hecd8cb5_0
+  - partd=1.2.0=pyhd3eb1b0_1
   - pathspec=0.10.3=py38hecd8cb5_0
   - pcre=8.45=h23ab428_0
   - pexpect=4.8.0=pyhd3eb1b0_3
@@ -267,7 +261,7 @@ dependencies:
   - pyqtwebengine=5.15.7=py38he9d5cce_0
   - pyrsistent=0.18.0=py38hca72f7f_0
   - pysocks=1.7.1=py38_1
-  - python=3.8.18=h218abb5_0
+  - python=3.8.17=h218abb5_0
   - python-dateutil=2.8.2=pyhd3eb1b0_0
   - python-fastjsonschema=2.16.2=py38hecd8cb5_0
   - python-lmdb=1.4.1=py38hcec6c5f_0
@@ -280,7 +274,6 @@ dependencies:
   - python_abi=3.8=2_cp38
   - pythran=0.13.1=py38h28201f7_0
   - pytoolconfig=1.2.5=py38hecd8cb5_1
-  - pytorch=1.13.1=cpu_py38h9e40b02_0
   - pytz=2022.7=py38hecd8cb5_0
   - pywavelets=1.4.1=py38h6c40b1e_0
   - pyyaml=6.0=py38h6c40b1e_1
@@ -296,7 +289,6 @@ dependencies:
   - rasterio=1.2.10=py38h42baa9d_0
   - readline=8.2=hca72f7f_0
   - requests=2.31.0=py38hecd8cb5_0
-  - rhash=1.4.1=hbcfaee0_1
   - rope=1.7.0=py38hecd8cb5_0
   - rtree=1.0.1=py38hecd8cb5_0
   - scikit-image=0.19.3=py38hcec6c5f_1
@@ -343,7 +335,6 @@ dependencies:
   - tomli=2.0.1=py38hecd8cb5_0
   - tomlkit=0.11.1=py38hecd8cb5_0
   - toolz=0.12.0=py38hecd8cb5_0
-  - torchvision=0.15.2=cpu_py38h04f087f_0
   - tornado=6.3.2=py38h6c40b1e_0
   - tqdm=4.65.0=py38h01d92e1_0
   - traitlets=5.7.1=py38hecd8cb5_0
@@ -376,4 +367,6 @@ dependencies:
   - zipp=3.11.0=py38hecd8cb5_0
   - zlib=1.2.13=h4dc903c_0
   - zstd=1.5.5=hc035e20_0
+  - pip:
+      - kdepy==1.1.1
 prefix: /usr/local/anaconda3/envs/tlaenv

@@ -31,7 +31,7 @@ Help(){
    echo "#           <study_name.csv> with arguments for the analysis        #"
    echo "#                                                                   #"
    echo "#####################################################################"
-   echo "# Copyright (C) 2023, Luis Cisneros <lhcisner@asu.edu>              #"
+   echo "# Copyright (C) 2022, Luis Cisneros <lhcisner@asu.edu>              #"
    echo "#                     Arizona Cancer Evolution Center               #"
    echo "#                     Arizona State University. Tempe               #"
    echo "#                                                                   #"
@@ -112,7 +112,7 @@ case $ARG1 in
               	 source $SRC"tla_setup_mod_sbatch.sh" $ARG2 $graph $redo
                  exit;;
        	   FALSE) # serial run
-               	 source $SRC"tla_setup_mod_loop.sh" $ARG2 $graph $redo
+               	 source $SRC"tla_setup_mod.sh" $ARG2 $graph $redo
                  exit;;
     	esac
     	;;
@@ -123,7 +123,7 @@ case $ARG1 in
              	source $SRC"tla_mod_sbatch.sh" $ARG2 $graph $redo
              	exit;;
            FALSE) # serial run
-           	source $SRC"tla_mod_loop.sh" $ARG2 $graph $redo
+           	source $SRC"tla_mod.sh" $ARG2 $graph $redo
               	exit;;
     	esac
         ;;
@@ -134,7 +134,7 @@ case $ARG1 in
              	source $SRC"tla_ssh_mod_sbatch.sh" $ARG2 $graph $redo
              	exit;;
        	   FALSE) # serial run
-           	source $SRC"tla_shh_mod_loop.sh" $ARG2 $graph $redo
+           	source $SRC"tla_shh_mod.sh" $ARG2 $graph $redo
               	exit;;
     	esac
         ;;    
@@ -148,9 +148,9 @@ case $ARG1 in
             	#source $SRC"tla_ssh_mod_sbatch.sh" $ARG2 $graph $redo
              	exit;;
        	   FALSE) # serial run
-           	source $SRC"tla_setup_mod_loop.sh" $ARG2 $graph $redo
-            	source $SRC"tla_mod_loop.sh" $ARG2 $graph $redo
-            	#source $SRC"tla_ssh_mod_loop.sh" $ARG2 $graph $redo
+           	source $SRC"tla_setup_mod.sh" $ARG2 $graph $redo
+            	source $SRC"tla_mod.sh" $ARG2 $graph $redo
+            	#source $SRC"tla_ssh_mod.sh" $ARG2 $graph $redo
             	exit;;
     	esac
     	;;
@@ -183,5 +183,4 @@ case $ARG1 in
       exit;;
 
 esac
-
 
