@@ -1,0 +1,187 @@
+#!/bin/bash
+
+PTH=$( dirname "$0")
+SRC=$PTH"/src/"
+
+Help(){
+   # Display Help
+   echo "#####################################################################"
+   echo "# Tumor Landscape Analysis (TLA)                                    #"
+   echo "#                                                                   #"
+   echo "# Syntax: TLA [options] action study                                #"
+   echo "#                                                                   #"
+   echo "#  help options (these will NOT run TLA):                           #"
+   echo "#   -h   print this help                                            #"
+   echo "#   -v   print TLA modules versions                                 #"
+   echo "#   -l   print license statement                                    #"
+   echo "#                                                                   #"
+   echo "#  switches for TLA:                                                #"
+   echo "#   -s   if used then 'sbatch' is TLA run in a SLURM                #"
+   echo "#        array, otherwise it runs is serial mode.                   #"
+   echo "#   -g   if used all sample graphs are plotted.                     #"
+   echo "#   -r   if used all data is re-analyzed from scratch.              #"
+   echo "#                                                                   #"
+   echo "#  arguments:                                                       #"
+   echo "#   action: 'setup' for pre-processing data                         #"
+   echo "#           'run' for TLA analysis                                  #"
+   echo "#           'ssh' for SSH post-analysis                             #"
+   echo "#           'all' for TLA setup and run analyses                    #"
+   echo "#           'clean' clean study folder of all analysis results      #"
+   echo "#   study:  name of study set to process, corresponding with a file #"
+   echo "#           <study_name.csv> with arguments for the analysis        #"
+   echo "#                                                                   #"
+   echo "#####################################################################"
+   echo "# Copyright (C) 2023, Luis Cisneros <lhcisner@asu.edu>              #"
+   echo "#                     Arizona Cancer Evolution Center               #"
+   echo "#                     Arizona State University. Tempe               #"
+   echo "#                                                                   #"
+   echo "# This software is free; you can redistribute it and/or modify it   #"
+   echo "# it under the terms of the GNU General Public License as published #"
+   echo "# in the URL: https://www.gnu.org/licenses/gpl-3.0.en.html          #"
+   echo "#                                                                   #"
+   echo "#####################################################################"
+   echo
+   
+   exit 2
+}
+
+Versions(){
+   echo "#####################################################################"
+   echo " Tumor Landscape Analysis (TLA)  - Module versions:                  "
+   
+   f=$SRC"tla_setup_sample.py"
+   echo "$f => $(grep '^__version__' $f)"
+   
+   f=$SRC"tla_sample.py"
+   echo "$f => $(grep '^__version__' $f)"
+   
+   #f=$SRC"tla_ssh_sample.py"
+   echo "$f => $(grep '^__version__' $f)"
+   
+   echo "#####################################################################"
+   echo
+   
+   exit 2
+}
+
+slurm=FALSE
+graph=''
+redo=''
+
+while getopts ":hvlsgr" option; do
+    case "$option" in
+
+	h)
+        Help
+        ;;
+	v)
+        Versions
+        ;;
+	l)
+        less LICENSE
+	    exit;;
+    s)
+        slurm=TRUE
+        ;;
+	g)
+        graph="--graph"
+        ;;
+	r)
+        redo="--redo"
+        ;;
+    *)
+        Help
+        ;;
+    esac
+done
+
+shift $((OPTIND-1))
+
+##############################################################################
+# Program call                                                               #
+##############################################################################
+
+ARG1=${1:-''}
+ARG2=${2:-'test_set.csv'}
+
+case $ARG1 in
+
+   setup) # run pre-processing module
+    	case $slurm in
+      	   TRUE) # slurm run
+              	 source $SRC"tla_setup_mod_sbatch.sh" $ARG2 $graph $redo
+                 exit;;
+       	   FALSE) # serial run
+               	 source $SRC"tla_setup_mod_loop.sh" $ARG2 $graph $redo
+                 exit;;
+    	esac
+    	;;
+    	
+   run) # run TLA module
+    	case $slurm in
+      	   TRUE) # slurm run
+             	source $SRC"tla_mod_sbatch.sh" $ARG2 $graph $redo
+             	exit;;
+           FALSE) # serial run
+           	source $SRC"tla_mod_loop.sh" $ARG2 $graph $redo
+              	exit;;
+    	esac
+        ;;
+    
+   ssh) # run SSH module
+    	case $slurm in
+      	   TRUE) # slurm run
+             	source $SRC"tla_ssh_mod_sbatch.sh" $ARG2 $graph $redo
+             	exit;;
+       	   FALSE) # serial run
+           	source $SRC"tla_shh_mod_loop.sh" $ARG2 $graph $redo
+              	exit;;
+    	esac
+        ;;    
+    
+   all) # run all modules
+    	case $slurm in
+	 
+      	   TRUE) # slurm run
+        	source $SRC"tla_setup_mod_sbatch.sh" $ARG2 $graph $redo
+            	source $SRC"tla_mod_sbatch.sh" $ARG2 $graph $redo
+            	#source $SRC"tla_ssh_mod_sbatch.sh" $ARG2 $graph $redo
+             	exit;;
+       	   FALSE) # serial run
+           	source $SRC"tla_setup_mod_loop.sh" $ARG2 $graph $redo
+            	source $SRC"tla_mod_loop.sh" $ARG2 $graph $redo
+            	#source $SRC"tla_ssh_mod_loop.sh" $ARG2 $graph $redo
+            	exit;;
+    	esac
+    	;;
+   clean) # delete results
+       echo "Are you sure you wish to clean cache for studies in <$ARG2>?"
+       select yn in "Yes" "No"; do
+           case $yn in
+                Yes ) 
+                    {
+                       read    
+                       while IFS=, read -r nam rph sam cls pth res ; do
+                           echo "... cleaning data for study <$nam>"
+                           datadir=${pth}
+                           echo $datadir
+                           rm -rf $datadir
+                       done
+                     } < $ARG2; 
+                     exit;; 
+                No ) 
+                    echo "... nothing was done!"
+                    exit;;
+             esac
+       done
+       exit;;
+	
+   *) # unknown action
+      echo -n "... ERROR: Action <<$ARG1>> is not a recognized action!"
+      echo
+      Help
+      exit;;
+
+esac
+
+
