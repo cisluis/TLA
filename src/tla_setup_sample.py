@@ -1120,7 +1120,8 @@ class Sample:
                     for k, r in enumerate(self.rs):
                         # Ripleys H score (identity)
                         npairs = len(rcx)*(len(rcx) - 1)
-                        rk = ripleys_K(rcx, n[:, :, i, k], npairs, A)
+                        rk = ripleys_K(rcx, n[:, :, i, k], npairs, A,
+                                       bivariate=False)
                         if ~np.isnan(rk):
                             # original Ripley's H def (A = pi*r^2)
                             #rk = np.sqrt(rk/np.pi) - r
@@ -1161,7 +1162,7 @@ class Sample:
                                     # Ripleys H score (bivarite)
                                     npairs = len(rcx)*len(rcy)
                                     rk = ripleys_K(rcx, n[:, :, j, k], 
-                                                   npairs, A)
+                                                   npairs, A, bivariate=True)
                                     if ~np.isnan(rk):
                                         # original Ripley's H def (A = pi*r^2)
                                         #rk = np.sqrt(rk/np.pi) - r

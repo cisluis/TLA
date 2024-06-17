@@ -501,12 +501,14 @@ class Sample:
                             # Ripleys H score (bivarite)
                             npairs = N[:, :, xi]*N[:, :, yj]
                             K = ripleys_K_array(rcx, n[:, :, yj], npairs,
-                                                gker, roi, cuda=ISCUDA)
+                                                gker, roi, bivariate=True, 
+                                                cuda=ISCUDA)
                         else:
                             # # Ripleys H score (dentity)
                             npairs = N[:, :, xi]*(N[:, :, xi] - 1)/2
                             K = ripleys_K_array(rcx, n[:, :, xi], npairs,
-                                                gker, roi, cuda=ISCUDA)
+                                                gker, roi, bivariate=False,
+                                                cuda=ISCUDA)
                         # original Ripley's H def (A = pi*r^2)
                         #H = np.sqrt(K/np.pi) - r
                         # area of a Gaussian is 2*pi*sigma^2
@@ -1094,6 +1096,7 @@ class Sample:
         # if this analysis is already done, skip it
         out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
         fout = os.path.join(out_pth, self.sid +'_rhfunc_stats.csv')
+        
         if (redo or not os.path.exists(fout)):
             
             # analyses
@@ -1213,8 +1216,16 @@ class Sample:
         
         # if this analysis is already done, skip it
         out_pth = mkdirs(os.path.join(self.res_pth, 'space_factors'))
+        
+        if do_zs:
+            fout1 = os.path.join(out_pth, self.sid +'_geordG_stats.csv')
+            fout1l = os.path.join(out_pth, self.sid +'_geordG_local_stats.csv')
+            isfout = os.path.exists(fout1) and os.path.exists(fout1l)
+        fout2 = os.path.join(out_pth, self.sid +'_hots_stats.csv')
+        fout2l = os.path.join(out_pth,  self.sid +'_hots_local_stats.csv')
+        isfout2 = os.path.exists(fout2) and os.path.exists(fout2l)
 
-        if (redo):
+        if (redo or not isfout2 or (do_zs and not isfout)):
         
             # analyses
             df = analyses.copy()
@@ -1229,10 +1240,7 @@ class Sample:
                 
                 # do global Getis-Ord Z score
                 if do_zs:
-                    fout = os.path.join(out_pth, 
-                                        self.sid +'_geordG_stats.csv')
                     geordGarr = G[:,:,:,0]
-                fout2 = os.path.join(out_pth, self.sid +'_hots_stats.csv')
                 hotarr = H[:,:,:,0]
                 
                 # combinations of cases:
@@ -1261,7 +1269,7 @@ class Sample:
                                                        self.binsiz,
                                                        do_plots)
                     # saves landscape metrics table
-                    metrics.to_csv(fout, sep=',', index=False, header=True) 
+                    metrics.to_csv(fout1, sep=',', index=False, header=True) 
                 
                 # plots array of landscapes for these comparisons
                 [fig2, metrics] = plotDiscreteLandscape(self.sid, 
@@ -1296,11 +1304,7 @@ class Sample:
                     
                 # do local Getis-Ord Z score
                 if do_zs:
-                    fout = os.path.join(out_pth, 
-                                        self.sid +'_geordG_local_stats.csv')
                     geordGarr = G[:,:,:,1]
-                fout2 = os.path.join(out_pth, 
-                                    self.sid +'_hots_local_stats.csv')
                 hotarr = H[:,:,:,1]
                 
                 # combinations of cases:
@@ -1330,7 +1334,7 @@ class Sample:
                                                        do_plots)
                     
                     # saves landscape metrics table
-                    metrics.to_csv(fout, sep=',', index=False, header=True) 
+                    metrics.to_csv(fout1l, sep=',', index=False, header=True) 
                     
                 # plots array of landscapes for these comparisons
                 [fig2, metrics] = plotDiscreteLandscape(self.sid, 
@@ -1347,7 +1351,7 @@ class Sample:
                                                         self.binsiz,
                                                         do_plots)
                 # saves landscape metrics table
-                metrics.to_csv(fout2, sep=',', index=False, header=True) 
+                metrics.to_csv(fout2l, sep=',', index=False, header=True) 
                 
                 if do_plots:
                     if do_zs:
@@ -2779,15 +2783,16 @@ def plotFactorCorrelation(rasteri, comps1, tti, limsi,
                                 color='k', linestyle='dashed')
                     ax[ij].set_xlim(limsi[0], limsi[1])
                     ax[ij].set_ylim(limsj[0], limsj[1])
-                    ax[ij].axis('equal')
                     ax[ij].set_title(coefs + ' (' + star + ')', size=20)
                     
                 k = k + 1
-    for i in range(k, shp[0]*shp[1]):
-        ax[np.unravel_index(i, shp)].axis('square')
-        ax[np.unravel_index(i, shp)].remove()
         
     if do_plots:
+        
+        for i in range(k, shp[0]*shp[1]):
+            ax[np.unravel_index(i, shp)].axis('square')
+            ax[np.unravel_index(i, shp)].remove()
+
         fig.subplots_adjust(hspace=0.4)
         fig.suptitle(ttl, fontsize=24, y=.95)
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])

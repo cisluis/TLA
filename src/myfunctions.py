@@ -452,7 +452,7 @@ def kdeMask_rois(data, shape, bw, minsiz, split=False, cuda=False):
 ###############################################################################
 # %% Spatial Statistics
 
-def ripleys_K(rc, n, npairs, A):
+def ripleys_K(rc, n, npairs, A, bivariate=True):
     """Ripley's K function K(r). Global metric. 
     
     Using whole ensamble of points to calculate the background point density
@@ -497,18 +497,21 @@ def ripleys_K(rc, n, npairs, A):
         # number of neighbors in kernel around each point
         # (Indicator function integral)
         Ir = np.zeros((n.shape[0], n.shape[1]))
-        Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
-        
+        if bivariate:
+            Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]]
+        else:
+            Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
+    
         # Ripley's K sum (do sum of Ir for each kernel)
         ripley = A * np.sum(Ir)/npairs
         
-        if ripley < 0:
+        if ripley <= 0:
             ripley = np.nan
     
     return(tofloat(ripley))
 
 
-def ripleys_K_array(rc, n, npairs, kernel, roi, cuda=False):
+def ripleys_K_array(rc, n, npairs, kernel, roi, bivariate=True, cuda=False):
     """ Ripley's K function K(r). Local metric.
     
     Using local ensamble of points to calculate the background point density
@@ -552,7 +555,10 @@ def ripleys_K_array(rc, n, npairs, kernel, roi, cuda=False):
     if (len(rc) > 1):
         # number of neighbors (at subkernel scale) around each point
         Ir = np.zeros((n.shape[0], n.shape[1]))
-        Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
+        if bivariate:
+            Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]]
+        else:
+            Ir[rc[:, 0], rc[:, 1]] = n[rc[:, 0], rc[:, 1]] - 1
         
         # local parameters
         delta = np.min(kernel[kernel>0])
